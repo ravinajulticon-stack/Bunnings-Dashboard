@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Philips Display Rollout — Status Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --navy: #1F4E78; --navy-dark: #163a58; --ink: #1a2733; --muted: #64748b;
+    --bg-page: #f4f6f9; --bg-card: #ffffff; --border: #e2e8f0;
+    --nsw: #4A90D9; --vic: #E8834E; --sa: #6FAE71; --wa: #E0B94F; --qld: #B570A0;
+    --red: #C0392B; --amber: #E0B94F; --green: #2e9e5b;
+    --red-bg: #FDECEA; --amber-bg: #FFF7E0; --green-bg: #EAF7EF;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg-page); font-family: 'Segoe UI', Arial, sans-serif; color: var(--ink); }
+  #root { max-width: 980px; margin: 0 auto; padding: 28px 20px 48px; }
+
+  .header { text-align: center; margin-bottom: 18px; position: relative; }
+  .header h1 { font-size: 26px; font-weight: 700; color: var(--navy-dark); margin: 0 0 4px; letter-spacing: -0.3px; }
+  .status-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--muted); background: #F1F5F9; padding: 3px 10px; border-radius: 20px; margin-top: 4px; }
+  .live-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--green); background: var(--green-bg); padding: 3px 10px; border-radius: 20px; margin-top: 4px; }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+  .print-btn { position: absolute; top: 0; right: 0; background: var(--navy); color: white; border: none; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .print-btn:hover { background: var(--navy-dark); }
+
+  .upload-panel { background: var(--bg-card); border: 1px dashed #b9c4d1; border-radius: 12px; padding: 16px 20px; margin-bottom: 18px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .upload-panel .utext { flex: 1; min-width: 220px; }
+  .upload-panel .utitle { font-size: 13px; font-weight: 700; color: var(--navy-dark); margin-bottom: 2px; }
+  .upload-panel .usub { font-size: 11.5px; color: var(--muted); }
+  .file-btn { background: #EAF1FA; color: var(--navy); border: 1px solid #cfe0f2; border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  .add-btn { background: var(--navy); color: white; border: none; border-radius: 8px; padding: 8px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+  .add-btn:disabled { background: #b9c4d1; cursor: not-allowed; }
+  .upload-status { font-size: 11.5px; margin-top: 6px; width: 100%; }
+  .upload-status.ok { color: var(--green); }
+  .upload-status.err { color: var(--red); }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+  .kpi { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 10px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .kpi .num-row { display: flex; align-items: baseline; justify-content: center; gap: 6px; }
+  .kpi .num { font-size: 28px; font-weight: 800; color: var(--navy-dark); line-height: 1.1; }
+  .kpi .trend { font-size: 11.5px; font-weight: 700; }
+  .kpi .trend.up-bad { color: var(--red); }
+  .kpi .trend.down-good { color: var(--green); }
+  .kpi .trend.flat { color: var(--muted); }
+  .kpi .label { font-size: 10.5px; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.3px; }
+
+  .section { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px 22px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .section h2 { font-size: 14.5px; font-weight: 700; color: var(--navy-dark); margin: 0 0 16px; display: flex; align-items: center; gap: 8px; }
+  .section h2 svg { flex-shrink: 0; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  .state-bars { display: flex; flex-direction: column; gap: 10px; }
+  .state-row { display: grid; grid-template-columns: 44px 1fr 30px; align-items: center; gap: 10px; }
+  .state-name { font-size: 12.5px; font-weight: 600; }
+  .bar-track { background: #f1f5f9; border-radius: 6px; height: 18px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 6px; transition: width 1s ease; }
+  .state-count { font-size: 12.5px; font-weight: 700; text-align: right; }
+
+  .issue-card-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .issue-card { border-radius: 10px; padding: 16px 6px; text-align: center; }
+  .issue-card-state { font-size: 12px; font-weight: 700; letter-spacing: 0.3px; }
+  .issue-card-num { font-size: 26px; font-weight: 800; line-height: 1.3; }
+  .issue-card-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
+
+  .product-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .product-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .product-card .pname { font-size: 12px; font-weight: 700; margin-bottom: 6px; }
+  .product-track { background: #f1f5f9; border-radius: 5px; height: 13px; overflow: hidden; margin-bottom: 6px; }
+  .product-fill { height: 100%; border-radius: 5px; background: var(--navy); transition: width 1s ease; }
+  .product-meta { font-size: 10.5px; color: var(--muted); display: flex; justify-content: space-between; }
+
+  .trend-chart { display: flex; align-items: flex-end; justify-content: center; }
+  .trend-note { font-size: 11px; color: var(--muted); text-align: center; margin-top: 8px; }
+
+  .pipeline { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+  .pipeline-group-label { font-size: 10.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 6px; }
+  .pipeline-divider { height: 1px; background: var(--border); margin: 14px 0; }
+  .pipe-stage { flex: 1; text-align: center; border-radius: 10px; padding: 14px 8px; border: 1px solid var(--border); }
+  .pipe-stage .pnum { font-size: 22px; font-weight: 800; }
+  .pipe-stage .plabel { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; margin-top: 2px; }
+  .pipe-arrow { color: var(--muted); font-size: 16px; flex-shrink: 0; }
+  .stage-new { background: #F1F5F9; } .stage-new .pnum { color: #475569; }
+  .stage-carried { background: var(--amber-bg); } .stage-carried .pnum { color: #8a6d00; }
+  .stage-resolved { background: var(--green-bg); } .stage-resolved .pnum { color: var(--green); }
+
+  .group { border-radius: 12px; padding: 18px 22px; margin-bottom: 16px; border: 1px solid; }
+  .group-red { background: var(--red-bg); border-color: #f3c7c2; }
+  .group-amber { background: var(--amber-bg); border-color: #f0dca0; }
+  .group-green { background: var(--green-bg); border-color: #bfe6cd; }
+  .group h2 { font-size: 14px; font-weight: 700; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
+  .group-red h2 { color: var(--red); } .group-amber h2 { color: #8a6d00; } .group-green h2 { color: var(--green); }
+  .step-badge { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; color: #ffffff; font-size: 12px; font-weight: 800; flex-shrink: 0; }
+  .step-badge-red { background: var(--red); } .step-badge-amber { background: var(--amber); color: #4a3b00; } .step-badge-green { background: var(--green); }
+
+  .item-list { display: flex; flex-direction: column; gap: 8px; }
+  .item { background: #ffffff; border-radius: 8px; padding: 10px 14px; border: 1px solid rgba(0,0,0,0.06); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .item-main { display: flex; align-items: center; gap: 8px; }
+  .state-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .item-store { font-size: 12.5px; font-weight: 700; }
+  .item-detail { font-size: 11px; color: var(--muted); }
+  .item-badges { display: flex; gap: 6px; flex-shrink: 0; }
+  .pill { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+  .pill-days-high { background: #FDECEA; color: var(--red); }
+  .pill-days-low { background: #F1F5F9; color: var(--muted); }
+  .pill-soh { background: #EAF1FA; color: var(--navy); }
+  .pill-soh-zero { background: var(--red-bg); color: var(--red); }
+  .empty-note { font-size: 12px; color: var(--muted); font-style: italic; }
+
+  .legend-row { display: flex; gap: 16px; font-size: 11px; color: var(--muted); justify-content: center; flex-wrap: wrap; margin-top: 4px; }
+  .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+
+  .footer-list { list-style: none; counter-reset: footnote; padding: 0; margin: 8px 0 0; font-size: 11px; color: var(--muted); text-align: left; max-width: 640px; margin-left: auto; margin-right: auto; }
+  .footer-list li { counter-increment: footnote; position: relative; padding-left: 20px; margin-bottom: 4px; }
+  .footer-list li::before { content: counter(footnote) "."; position: absolute; left: 0; font-weight: 700; color: var(--navy-dark); }
+
+  @media print {
+    body { background: #ffffff; }
+    .print-btn, .upload-panel { display: none; }
+    .section, .kpi, .group { box-shadow: none; break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div id="root">Loading…</div>
+<script>
+const MASTER = [{"state": "NSW", "store": 7313, "name": "Alexandria Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7174, "name": "Artarmon Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7175, "name": "Ashfield Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7304, "name": "Balgowlah Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7086, "name": "Bankstown Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7168, "name": "Belrose Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7342, "name": "Blacktown Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7364, "name": "Bonnyrigg Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7386, "name": "Campbelltown Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7219, "name": "Caringbah Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7314, "name": "Castle Hill Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7216, "name": "Chatswood Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7082, "name": "Dural Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7316, "name": "Eastgardens Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7334, "name": "Gladesville Warehouse", "models": ["DDL709", "7300-5HB"]}, {"state": "NSW", "store": 7315, "name": "Greenacre Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7379, "name": "Gregory Hills Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7376, "name": "Hoxton Park Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7361, "name": "Katoomba Store", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7319, "name": "Kingsgrove Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7213, "name": "Kirrawee Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7222, "name": "Leppington Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7173, "name": "Lidcombe Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7318, "name": "Marsden Park Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7096, "name": "McGraths Hill Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7021, "name": "Mittagong Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7214, "name": "Narellan Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7159, "name": "Narrabeen Store", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7063, "name": "North Penrith Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7384, "name": "Northmead Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7351, "name": "Padstow Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7151, "name": "Penrith Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7346, "name": "Pymble Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7071, "name": "Rockdale Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7310, "name": "Rouse Hill Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7373, "name": "Rozelle Store", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7333, "name": "Rydalmere Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7212, "name": "Seven Hills Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7369, "name": "Smithfield NSW Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7152, "name": "Thornleigh Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7161, "name": "Valley Heights Store", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7179, "name": "Villawood Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "NSW", "store": 7130, "name": "Warringah Mall SFS", "models": ["7300-5HB"]}, {"state": "NSW", "store": 7106, "name": "Minchinbury Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6404, "name": "Altona Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6228, "name": "Bayswater Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6035, "name": "Box Hill Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6126, "name": "Broadmeadows Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6386, "name": "Caroline Springs Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6427, "name": "Carrum Downs Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6428, "name": "Chadstone Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6437, "name": "Clyde North Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6310, "name": "Coburg Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6425, "name": "Collingwood Store", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6385, "name": "Craigieburn Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6201, "name": "Cranbourne Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6118, "name": "Croydon Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6439, "name": "Dandenong Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6402, "name": "Doncaster Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6433, "name": "East Pakenham Store", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6037, "name": "Eltham Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6401, "name": "Epping Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6443, "name": "Fairfield Store", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6461, "name": "Narre Warren Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6221, "name": "Frankston Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6196, "name": "Geelong North Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6202, "name": "Hastings Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6299, "name": "Hawthorn Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6395, "name": "Hoppers Crossing Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6240, "name": "Keysborough Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6431, "name": "Leopold Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6435, "name": "Lilydale Store", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6224, "name": "Maribyrnong Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6450, "name": "Melton East Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6400, "name": "Mentone Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6422, "name": "Mernda Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6246, "name": "Mill Park Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6363, "name": "Moorabbin Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6180, "name": "Mornington (VIC) Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6359, "name": "Notting Hill Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6140, "name": "Nunawading Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6438, "name": "Oakleigh Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6227, "name": "Pakenham Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6042, "name": "Port Melbourne Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6448, "name": "Preston Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6432, "name": "Ringwood Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6075, "name": "Rosebud Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6011, "name": "Scoresby Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6403, "name": "Springvale Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6411, "name": "Sunbury Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6083, "name": "Sunshine Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6453, "name": "Tarneit Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6194, "name": "Taylors Lakes Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6390, "name": "Thomastown Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6388, "name": "Torquay Warehouse", "models": ["DDL709", "7300-5HB"]}, {"state": "VIC", "store": 6230, "name": "Vermont South Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6449, "name": "Warragul Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6185, "name": "Waurn Ponds Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6415, "name": "Werribee SFS", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6249, "name": "West Footscray Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "VIC", "store": 6451, "name": "Wonthaggi Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "SA", "store": 5095, "name": "Marion Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "SA", "store": 5214, "name": "Victor Harbor Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "SA", "store": 5226, "name": "Adelaide Airport Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "SA", "store": 5121, "name": "Mile End Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "SA", "store": 5150, "name": "Reynella Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "SA", "store": 5211, "name": "Seaford Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "SA", "store": 5220, "name": "Windsor Gardens Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "SA", "store": 5083, "name": "Noarlunga Warehouse", "models": ["DDL709", "7300-5HB"]}, {"state": "SA", "store": 5160, "name": "Parafield Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "SA", "store": 5229, "name": "Murray Bridge Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "SA", "store": 5068, "name": "Woodville Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "SA", "store": 5224, "name": "Munno Para West Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "SA", "store": 5181, "name": "Gawler Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "SA", "store": 5024, "name": "Kent Town Store", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "SA", "store": 5210, "name": "Modbury Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "SA", "store": 5215, "name": "Port Lincoln Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2432, "name": "Armadale WA Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2445, "name": "Bayswater (WA) Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2157, "name": "Melville Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2052, "name": "Belmont WA Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2160, "name": "Cockburn Central Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2440, "name": "Midland Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2130, "name": "Maddington Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2435, "name": "Joondalup Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2404, "name": "Innaloo Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2438, "name": "Cannington Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2443, "name": "Wangara Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2181, "name": "Albany Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2010, "name": "Balcatta Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2170, "name": "Mindarie Warehouse - Lower Keys Drive", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2016, "name": "Harrisdale Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2402, "name": "O'Connor Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2260, "name": "Homebase Store", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2406, "name": "Malaga Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "WA", "store": 2442, "name": "Baldivis Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8196, "name": "Acacia Ridge Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8158, "name": "Arundel Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8171, "name": "Bethania Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8191, "name": "Brendale Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8066, "name": "Browns Plains Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8181, "name": "Bundamba Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8172, "name": "Burleigh Waters Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8220, "name": "Caboolture Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8026, "name": "Cannon Hill Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8101, "name": "Capalaba Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8018, "name": "Carseldine Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8179, "name": "Dalby Store", "models": ["DDL709", "7300-5HB", "DDL210-1H"]}, {"state": "QLD", "store": 8197, "name": "Indooroopilly Store", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8203, "name": "Kawana Store", "models": ["DDL709", "7300-5HB", "DDL615"]}, {"state": "QLD", "store": 8057, "name": "Keperra Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8205, "name": "Kingaroy Warehouse", "models": ["DDL709", "7300-5HB"]}, {"state": "QLD", "store": 8212, "name": "Lawnton Store", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8199, "name": "Logan Road Mt Gravatt Store", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8201, "name": "Loganholme Store", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8164, "name": "Manly West Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8042, "name": "Morayfield Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8103, "name": "Mt Gravatt Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8140, "name": "Nerang Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8161, "name": "Newstead Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8180, "name": "North Lakes Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8169, "name": "Oxenford Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8109, "name": "Oxley Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8215, "name": "Pimpama Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8211, "name": "Robina Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8035, "name": "Southport Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8182, "name": "Springfield Central Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8056, "name": "Stafford Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8210, "name": "Underwood Compton Road Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8085, "name": "Victoria Point Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8175, "name": "Virginia Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}, {"state": "QLD", "store": 8159, "name": "West Ipswich Warehouse", "models": ["DDL709", "7300-5HB", "DDL210-1H", "DDL615"]}];
+const MODEL_DESC = {"DDL709": ">PHILIPS FACIAL RECOGNITION++TWO-WAY VIDEO INTERCOM DDL709", "7300-5HB": ">DIGITAL DOOR LOCK PHILIPS++EASYKEY 7300-5HB BLACK", "DDL210-1H": ">DIGITAL DOOR LOCK PHILIPS++DDL210-1H-BLACK", "DDL615": ">PHILIPS 4 METHOD UNLOCK HANDL++FINGERPRINT & PIN SHARE DDL615"};
+const SEED_HISTORY = [{"weekStart": "20260706", "label": "Jul 12", "deranged": [{"store": 7361, "state": "NSW", "name": "Katoomba Store", "model": "DDL210-1H", "soh": 2}, {"store": 7161, "state": "NSW", "name": "Valley Heights Store", "model": "DDL210-1H", "soh": null}, {"store": 8212, "state": "QLD", "name": "Lawnton Store", "model": "DDL210-1H", "soh": null}, {"store": 8199, "state": "QLD", "name": "Logan Road Mt Gravatt Store", "model": "DDL210-1H", "soh": null}, {"store": 8199, "state": "QLD", "name": "Logan Road Mt Gravatt Store", "model": "DDL615", "soh": 1}, {"store": 8085, "state": "QLD", "name": "Victoria Point Warehouse", "model": "DDL210-1H", "soh": null}, {"store": 6433, "state": "VIC", "name": "East Pakenham Store", "model": "DDL210-1H", "soh": null}, {"store": 6451, "state": "VIC", "name": "Wonthaggi Warehouse", "model": "DDL615", "soh": 1}, {"store": 2260, "state": "WA", "name": "Homebase Store", "model": "DDL615", "soh": 1}]}, {"weekStart": "20260713", "label": "Jul 19", "deranged": [{"store": 7361, "state": "NSW", "name": "Katoomba Store", "model": "DDL210-1H", "soh": 2}, {"store": 7159, "state": "NSW", "name": "Narrabeen Store", "model": "DDL709", "soh": 4}, {"store": 7159, "state": "NSW", "name": "Narrabeen Store", "model": "7300-5HB", "soh": 3}, {"store": 7152, "state": "NSW", "name": "Thornleigh Warehouse", "model": "DDL615", "soh": 1}, {"store": 7161, "state": "NSW", "name": "Valley Heights Store", "model": "DDL210-1H", "soh": 2}, {"store": 8212, "state": "QLD", "name": "Lawnton Store", "model": "DDL210-1H", "soh": 1}, {"store": 8199, "state": "QLD", "name": "Logan Road Mt Gravatt Store", "model": "DDL615", "soh": 1}, {"store": 8085, "state": "QLD", "name": "Victoria Point Warehouse", "model": "DDL210-1H", "soh": 1}, {"store": 6433, "state": "VIC", "name": "East Pakenham Store", "model": "DDL210-1H", "soh": 3}, {"store": 6451, "state": "VIC", "name": "Wonthaggi Warehouse", "model": "DDL615", "soh": 1}, {"store": 2260, "state": "WA", "name": "Homebase Store", "model": "DDL615", "soh": 1}]}, {"weekStart": "20260720", "label": "Jul 26", "deranged": [{"store": 7159, "state": "NSW", "name": "Narrabeen Store", "model": "DDL709", "soh": 4}, {"store": 7159, "state": "NSW", "name": "Narrabeen Store", "model": "7300-5HB", "soh": 3}, {"store": 7152, "state": "NSW", "name": "Thornleigh Warehouse", "model": "DDL615", "soh": 1}, {"store": 6451, "state": "VIC", "name": "Wonthaggi Warehouse", "model": "DDL615", "soh": 1}, {"store": 2260, "state": "WA", "name": "Homebase Store", "model": "DDL615", "soh": 0}, {"store": 8199, "state": "QLD", "name": "Logan Road Mt Gravatt Store", "model": "DDL615", "soh": 1}]}];
+const EXCLUDED_MODELS = ['DDL210-1H'];
+// Real, shared, persistent storage via Supabase.
+// Publishable key is safe to expose client-side; RLS policies on the
+// table control what it can actually read/write.
+const SUPABASE_URL = 'https://krehcrqqcykynqkqabfb.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_9rrHEKoA7o9RAnp4G66m3w_3nhRfeEc';
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const SNAPSHOTS_TABLE = 'philips_deranged_snapshots';
+
+const DESC_TO_MODEL = {};
+Object.keys(MODEL_DESC).forEach(m => { DESC_TO_MODEL[MODEL_DESC[m]] = m; });
+
+const icon = {
+  pin: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
+  lock: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+  trend: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 17 9 11 13 15 21 5"/><polyline points="14 5 21 5 21 12"/></svg>`,
+  flow: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M8.2 7.2 15.8 10.8M8.2 16.8 15.8 13.2"/></svg>`,
+  alert: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`,
+  plus: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>`,
+  check: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>`,
+  print: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>`,
+};
+
+const stateColorMap = { NSW: 'var(--nsw)', VIC: 'var(--vic)', SA: 'var(--sa)', WA: 'var(--wa)', QLD: 'var(--qld)' };
+const modelFullName = {
+  'DDL709': 'Philips Facial Recognition Intercom (DDL709)',
+  '7300-5HB': 'Digital Door Lock EasyKey (7300-5HB)',
+  'DDL210-1H': 'Digital Door Lock (DDL210-1H)',
+  'DDL615': 'Fingerprint & PIN Share Lock (DDL615)',
+};
+
+const STATE_TOTALS = (() => {
+  const counts = {};
+  MASTER.forEach(s => { counts[s.state] = (counts[s.state] || 0) + 1; });
+  return counts;
+})();
+const STATE_ORDER = ['VIC', 'NSW', 'QLD', 'WA', 'SA'];
+const PRODUCT_TOTALS = (() => {
+  const totals = {};
+  Object.keys(MODEL_DESC).forEach(m => { totals[m] = { installed: 0, total: 0 }; });
+  MASTER.forEach(s => {
+    Object.keys(MODEL_DESC).forEach(m => {
+      totals[m].total += 1;
+      if (s.models.includes(m)) totals[m].installed += 1;
+    });
+  });
+  return totals;
+})();
+
+function itemKey(it) { return it.store + '|' + it.model; }
+
+function weekLabelFromWkStart(wkStart) {
+  // wkStart format YYYYMMDD (Monday), label date = +6 days
+  const y = parseInt(wkStart.slice(0,4)), mo = parseInt(wkStart.slice(4,6))-1, d = parseInt(wkStart.slice(6,8));
+  const dt = new Date(Date.UTC(y, mo, d));
+  dt.setUTCDate(dt.getUTCDate() + 6);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return months[dt.getUTCMonth()] + ' ' + dt.getUTCDate();
+}
+
+function parseCsvToSnapshot(csvText) {
+  const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+  const rows = parsed.data;
+  if (!rows.length) throw new Error('No rows found in file');
+  const wkStart = rows.find(r => r.Wk_Start)?.Wk_Start;
+  if (!wkStart) throw new Error('Could not find Wk_Start column');
+
+  const lookup = {};
+  rows.forEach(r => {
+    const storeNo = parseInt(r.Store, 10);
+    if (!storeNo || !r.Description) return;
+    lookup[storeNo + '|' + r.Description] = { status: r.Status, soh: r.SOH !== undefined && r.SOH !== '' ? parseFloat(r.SOH) : null };
+  });
+
+  const deranged = [];
+  MASTER.forEach(s => {
+    s.models.forEach(m => {
+      const desc = MODEL_DESC[m];
+      const rec = lookup[s.store + '|' + desc];
+      if (rec && rec.status === 'De-Ranged') {
+        deranged.push({ store: s.store, state: s.state, name: s.name, model: m, soh: rec.soh });
+      }
+    });
+  });
+
+  return { weekStart: wkStart, label: weekLabelFromWkStart(wkStart), deranged };
+}
+
+async function seedIfEmpty() {
+  const rows = SEED_HISTORY.map(s => ({
+    week_start: s.weekStart, week_label: s.label, deranged: s.deranged,
+  }));
+  const { error } = await supabaseClient
+    .from(SNAPSHOTS_TABLE)
+    .upsert(rows, { onConflict: 'week_start' });
+  if (error) console.error('Seed error', error);
+}
+
+async function loadSnapshots() {
+  const { data, error } = await supabaseClient
+    .from(SNAPSHOTS_TABLE)
+    .select('week_start, week_label, deranged')
+    .order('week_start', { ascending: true });
+
+  if (error) {
+    console.error('Load error', error);
+    throw new Error('Could not reach Supabase — showing local seed data instead. ' + error.message);
+  }
+  if (!data || data.length === 0) {
+    await seedIfEmpty();
+    return JSON.parse(JSON.stringify(SEED_HISTORY));
+  }
+  return data.map(r => ({ weekStart: r.week_start, label: r.week_label, deranged: r.deranged }));
+}
+
+async function saveSnapshot(snap) {
+  const { error } = await supabaseClient
+    .from(SNAPSHOTS_TABLE)
+    .upsert(
+      { week_start: snap.weekStart, week_label: snap.label, deranged: snap.deranged },
+      { onConflict: 'week_start' }
+    );
+  if (error) throw error;
+}
+
+function filteredItems(snapshot) {
+  if (!snapshot) return [];
+  return snapshot.deranged.filter(it => !EXCLUDED_MODELS.includes(it.model));
+}
+
+function computeWeeksOutstanding(snapshots, latestIdx, item) {
+  let weeks = 0;
+  for (let i = latestIdx; i >= 0; i--) {
+    const items = filteredItems(snapshots[i]);
+    if (items.some(it => itemKey(it) === itemKey(item))) { weeks++; } else { break; }
+  }
+  return weeks;
+}
+
+function daysFromWeeks(weeks) { return (weeks - 1) * 7; }
+
+function renderDashboard(snapshots) {
+  const root = document.getElementById('root');
+  if (!snapshots.length) {
+    root.innerHTML = '<div class="section"><p>No data yet. Upload a weekly CSV to get started.</p></div>';
+    return;
+  }
+  const latestIdx = snapshots.length - 1;
+  const latest = snapshots[latestIdx];
+  const prev = latestIdx > 0 ? snapshots[latestIdx - 1] : null;
+
+  const latestItems = filteredItems(latest);
+  const prevItems = filteredItems(prev);
+  const prevKeys = new Set(prevItems.map(itemKey));
+  const latestKeys = new Set(latestItems.map(itemKey));
+
+  const newItems = latestItems.filter(it => !prevKeys.has(itemKey(it)));
+  const carriedItems = latestItems.filter(it => prevKeys.has(itemKey(it)));
+  const resolvedItems = prevItems.filter(it => !latestKeys.has(itemKey(it)));
+
+  const withWeeks = (list) => list.map(it => ({ ...it, weeksOut: computeWeeksOutstanding(snapshots, latestIdx, it) }));
+  const carriedWithWeeks = withWeeks(carriedItems);
+  const newWithWeeks = newItems.map(it => ({ ...it, weeksOut: 1 }));
+
+  const issuesByState = {};
+  STATE_ORDER.forEach(s => issuesByState[s] = 0);
+  latestItems.forEach(it => { issuesByState[it.state] = (issuesByState[it.state] || 0) + 1; });
+
+  const trendData = snapshots.map(s => ({ label: s.label, value: filteredItems(s).length }));
+
+  const delta = prev ? latestItems.length - prevItems.length : 0;
+  const trendClass = delta > 0 ? 'up-bad' : (delta < 0 ? 'down-good' : 'flat');
+  const trendSymbol = delta > 0 ? ('▲ +' + delta) : (delta < 0 ? ('▼ ' + delta) : '— flat');
+  const trendHtml = prev ? `<span class="trend ${trendClass}">${trendSymbol}</span>` : '';
+
+  function itemRow(e) {
+    const days = daysFromWeeks(e.weeksOut);
+    const dayPill = days > 0
+      ? `<span class="pill pill-days-high">${days}d outstanding</span>`
+      : `<span class="pill pill-days-low">detected this week</span>`;
+    const sohVal = (e.soh === null || e.soh === undefined) ? '—' : e.soh;
+    const sohClass = e.soh === 0 ? 'pill-soh-zero' : 'pill-soh';
+    return `
+      <div class="item">
+        <div class="item-main">
+          <span class="state-dot" style="background:${stateColorMap[e.state] || '#94a3b8'};"></span>
+          <div>
+            <div class="item-store">${e.name} <span style="color:var(--muted); font-weight:500;">(${e.state})</span></div>
+            <div class="item-detail">${modelFullName[e.model] || e.model}</div>
+          </div>
+        </div>
+        <div class="item-badges">
+          <span class="pill ${sohClass}">SOH: ${sohVal}</span>
+          ${dayPill}
+        </div>
+      </div>
+    `;
+  }
+  function resolvedRow(e) {
+    return `
+      <div class="item">
+        <div class="item-main">
+          <span class="state-dot" style="background:${stateColorMap[e.state] || '#94a3b8'};"></span>
+          <div>
+            <div class="item-store">${e.name} <span style="color:var(--muted); font-weight:500;">(${e.state})</span></div>
+            <div class="item-detail">${modelFullName[e.model] || e.model} — back to Live</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function stateIssueCards() {
+    const maxIssues = Math.max(...Object.values(issuesByState), 1);
+    const shade = (n) => {
+      if (n === 0) return { bg: '#F1F3F5', text: '#94a3b8' };
+      const t = n / maxIssues;
+      const r = Math.round(253 - t * (253-192));
+      const g = Math.round(236 - t * (236-57));
+      const b = Math.round(234 - t * (234-43));
+      return { bg: `rgb(${r},${g},${b})`, text: t > 0.55 ? '#ffffff' : '#7a2b21' };
+    };
+    return `<div class="issue-card-grid">${STATE_ORDER.map(key => {
+      const n = issuesByState[key] || 0;
+      const { bg, text } = shade(n);
+      return `<div class="issue-card" style="background:${bg};"><div class="issue-card-state" style="color:${text};">${key}</div><div class="issue-card-num" style="color:${text};">${n}</div><div class="issue-card-label" style="color:${text}; opacity:0.85;">issue${n===1?'':'s'}</div></div>`;
+    }).join('')}</div>`;
+  }
+
+  function trendChart() {
+    const w = 260, h = 110, pad = 24;
+    const maxV = Math.max(...trendData.map(p => p.value), 1) * 1.3;
+    const stepX = trendData.length > 1 ? (w - pad*2) / (trendData.length - 1) : 0;
+    const pts = trendData.map((p, i) => {
+      const x = pad + i*stepX;
+      const y = h - pad - (p.value / maxV) * (h - pad*1.6);
+      return { x, y, ...p };
+    });
+    const linePts = pts.map(p => `${p.x},${p.y}`).join(' ');
+    const dots = pts.map(p => `
+      <circle cx="${p.x}" cy="${p.y}" r="4.5" fill="var(--red)"></circle>
+      <text x="${p.x}" y="${p.y-10}" text-anchor="middle" font-size="12" font-weight="700" fill="#1a2733">${p.value}</text>
+      <text x="${p.x}" y="${h-4}" text-anchor="middle" font-size="10.5" fill="#64748b">${p.label}</text>
+    `).join('');
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${linePts}" fill="none" stroke="var(--red)" stroke-width="2.5"></polyline>${dots}</svg>`;
+  }
+
+  const totalStores = MASTER.length;
+  const stateBarsHtml = STATE_ORDER.map(name => {
+    const count = STATE_TOTALS[name] || 0;
+    const maxState = Math.max(...Object.values(STATE_TOTALS));
+    const colorVar = { VIC:'var(--vic)', NSW:'var(--nsw)', QLD:'var(--qld)', WA:'var(--wa)', SA:'var(--sa)' }[name];
+    return `<div class="state-row"><div class="state-name">${name}</div><div class="bar-track"><div class="bar-fill" style="width:0%; background:${colorVar};" data-target="${(count/maxState*100).toFixed(1)}"></div></div><div class="state-count">${count}</div></div>`;
+  }).join('');
+
+  const productHtml = Object.keys(PRODUCT_TOTALS).map(m => {
+    const p = PRODUCT_TOTALS[m];
+    const pct = (p.installed / p.total * 100).toFixed(1);
+    return `<div class="product-card"><div class="pname">${modelFullName[m]}</div><div class="product-track"><div class="product-fill" style="width:0%;" data-target="${pct}"></div></div><div class="product-meta"><span>${p.installed} / ${p.total} stores</span><span>${pct}%</span></div></div>`;
+  }).join('');
+
+  root.innerHTML = `
+    <div class="header">
+      <h1>Philips Display Rollout — Status Dashboard</h1>
+      <div class="live-badge"><span class="live-dot"></span>LIVE · updated through ${latest.label}</div>
+      <button class="print-btn" onclick="window.print()">${icon.print} Print / Save PDF</button>
+    </div>
+
+    <div class="upload-panel">
+      <div class="utext">
+        <div class="utitle">Add this week's Bunnings CSV</div>
+        <div class="usub">Parses in your browser, then saves to Supabase — everyone who opens this page will see the update. Adding the same week twice overwrites that week's data rather than duplicating it.</div>
+        <div id="uploadStatus"></div>
+      </div>
+      <label class="file-btn">Choose CSV<input type="file" id="csvInput" accept=".csv" style="display:none;"></label>
+      <button class="add-btn" id="addBtn" disabled>Add to Dashboard</button>
+    </div>
+
+    <div class="kpi-row">
+      <div class="kpi"><div class="num-row"><div class="num">${totalStores}</div></div><div class="label">Stores Live</div></div>
+      <div class="kpi"><div class="num-row"><div class="num">${STATE_ORDER.length}</div></div><div class="label">States</div></div>
+      <div class="kpi"><div class="num-row"><div class="num">${Object.keys(MODEL_DESC).length}</div></div><div class="label">Product Lines</div></div>
+      <div class="kpi" style="border-color:#f3c7c2;"><div class="num-row"><div class="num" style="color:var(--red);">${latestItems.length}</div>${trendHtml}</div><div class="label" style="color:var(--red);">De-Ranged</div></div>
+    </div>
+
+    <div class="two-col">
+      <div class="section">
+        <h2>${icon.pin} Stores by State</h2>
+        <div class="state-bars">${stateBarsHtml}</div>
+      </div>
+      <div class="section">
+        <h2>${icon.pin} De-Ranged Issues by State</h2>
+        ${stateIssueCards()}
+        <div class="legend-row">
+          <span><span class="legend-dot" style="background:#F1F3F5;"></span>0 issues</span>
+          <span><span class="legend-dot" style="background:#e8968e;"></span>low</span>
+          <span><span class="legend-dot" style="background:var(--red);"></span>high</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>${icon.lock} Product Install Coverage</h2>
+      <div class="product-grid">${productHtml}</div>
+    </div>
+
+    <div class="two-col">
+      <div class="section">
+        <h2>${icon.trend} De-Ranged Trend (excl. DDL210-1H / DL505)</h2>
+        <div class="trend-chart">${trendChart()}</div>
+        <div class="trend-note">${snapshots.length} week${snapshots.length===1?'':'s'} tracked — updates automatically each time a new CSV is added</div>
+      </div>
+      <div class="section">
+        <h2>${icon.flow} This Week's Movement</h2>
+        <div class="pipeline">
+          <div class="pipe-stage stage-new"><div class="pnum">${newItems.length}</div><div class="plabel">New</div></div>
+          <div class="pipe-arrow">·</div>
+          <div class="pipe-stage stage-carried"><div class="pnum">${carriedItems.length}</div><div class="plabel">Carried Over</div></div>
+          <div class="pipe-arrow">·</div>
+          <div class="pipe-stage stage-resolved"><div class="pnum">${resolvedItems.length}</div><div class="plabel">Resolved</div></div>
+        </div>
+      </div>
+    </div>
+
+    ${resolvedItems.length ? `
+    <div class="group group-green">
+      <h2><span class="step-badge step-badge-green">${icon.check}</span> Resolved Since Last Week</h2>
+      <div class="item-list">${resolvedItems.map(resolvedRow).join('')}</div>
+    </div>` : ''}
+
+    <div class="group group-red">
+      <h2><span class="step-badge step-badge-red">1</span> ${icon.alert} Carried Over — Still De-Ranged</h2>
+      <div class="item-list">${carriedWithWeeks.length ? carriedWithWeeks.map(itemRow).join('') : '<div class="empty-note">Nothing carried over this week.</div>'}</div>
+    </div>
+
+    <div class="group group-amber">
+      <h2><span class="step-badge step-badge-amber">2</span> ${icon.plus} New This Week</h2>
+      <div class="item-list">${newWithWeeks.length ? newWithWeeks.map(itemRow).join('') : '<div class="empty-note">No new De-Ranged issues this week.</div>'}</div>
+    </div>
+
+    <ol class="footer-list">
+      <li>Based on the Philips Display Master file (${totalStores} stores) cross-checked against the Bunnings weekly status report.</li>
+      <li>De-Ranged figures exclude DDL210-1H and DL505 per standing instruction.</li>
+      <li>This page reads and writes to a shared Supabase database. Adding a week's CSV updates it for everyone who opens this page — not just your own browser.</li>
+    </ol>
+  `;
+
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      document.querySelectorAll('.bar-fill, .product-fill').forEach(el => { el.style.width = el.dataset.target + '%'; });
+    }, 80);
+  });
+
+  // wire up upload controls
+  const fileInput = document.getElementById('csvInput');
+  const addBtn = document.getElementById('addBtn');
+  const statusEl = document.getElementById('uploadStatus');
+  let pendingFile = null;
+
+  fileInput.addEventListener('change', () => {
+    pendingFile = fileInput.files[0] || null;
+    addBtn.disabled = !pendingFile;
+    statusEl.textContent = pendingFile ? `Selected: ${pendingFile.name}` : '';
+    statusEl.className = 'upload-status';
+  });
+
+  addBtn.addEventListener('click', async () => {
+    if (!pendingFile) return;
+    addBtn.disabled = true;
+    statusEl.textContent = 'Processing…';
+    statusEl.className = 'upload-status';
+    try {
+      const text = await pendingFile.text();
+      const newSnap = parseCsvToSnapshot(text);
+      statusEl.textContent = `Saving ${newSnap.label} to Supabase…`;
+      await saveSnapshot(newSnap);
+      const updated = await loadSnapshots();
+      statusEl.textContent = `Saved ${newSnap.label} — visible to everyone now`;
+      statusEl.className = 'upload-status ok';
+      setTimeout(() => renderDashboard(updated), 400);
+    } catch (e) {
+      statusEl.textContent = 'Error: ' + e.message;
+      statusEl.className = 'upload-status err';
+      addBtn.disabled = false;
+    }
+  });
+}
+
+(async () => {
+  const root = document.getElementById('root');
+  root.innerHTML = '<div class="section" style="text-align:center; color:var(--muted);">Loading latest data from Supabase…</div>';
+  try {
+    const snapshots = await loadSnapshots();
+    renderDashboard(snapshots);
+  } catch (e) {
+    root.innerHTML = `<div class="section" style="color:var(--red);">
+      <strong>Could not load live data.</strong><br>${e.message}<br><br>
+      Showing the built-in reference data instead — check your internet connection or try reloading.
+    </div>`;
+    renderDashboard(JSON.parse(JSON.stringify(SEED_HISTORY)));
+  }
+})();
+</script>
+</body>
+</html>

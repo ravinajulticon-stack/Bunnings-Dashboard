@@ -234,22 +234,19 @@ async function syncFromTracker() {
   if (!wkData.length) throw new Error('No data found in the Inventory Tracker yet.');
   const latestWk = wkData[0].wk_start;
 
-  const [factsRes, itemsRes] = await Promise.all([
-    fetch(TRACKER_URL + '/rest/v1/bunnings_facts?select=item,store,status,soh&country=eq.AU&wk_start=eq.' + latestWk, { headers }),
-    fetch(TRACKER_URL + '/rest/v1/bunnings_items?select=item,description', { headers })
-  ]);
-  if (!factsRes.ok || !itemsRes.ok) throw new Error('Could not read data from the Inventory Tracker');
-  const facts = await factsRes.json();
-  const items = await itemsRes.json();
-
-  const descOf = {};
-  items.forEach(i => { descOf[i.item] = i.description; });
+  // Read description straight off each row in the base table for this week,
+  // rather than joining through a separate item->description lookup: the same
+  // item code can carry inconsistent description text across different rows
+  // (a Bunnings export quirk), so a per-item lookup can silently pick the
+  // wrong variant. Using each row's own description avoids that entirely.
+  const rowsRes = await fetch(TRACKER_URL + '/rest/v1/bunnings_weekly_inventory?select=item,store,description,status,soh&country=eq.AU&wk_start=eq.' + latestWk, { headers });
+  if (!rowsRes.ok) throw new Error('Could not read data from the Inventory Tracker');
+  const rows = await rowsRes.json();
 
   const lookup = {};
-  facts.forEach(f => {
-    const desc = descOf[f.item];
-    if (!desc) return;
-    lookup[f.store + '|' + desc] = { status: f.status, soh: f.soh };
+  rows.forEach(f => {
+    if (!f.description) return;
+    lookup[f.store + '|' + f.description] = { status: f.status, soh: f.soh };
   });
 
   const deranged = [];

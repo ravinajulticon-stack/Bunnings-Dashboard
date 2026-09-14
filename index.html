@@ -218,6 +218,55 @@ function parseCsvToSnapshot(csvText) {
   return { weekStart: wkStart, label: weekLabelFromWkStart(wkStart), deranged };
 }
 
+const TRACKER_URL = 'https://vggbzpvgukprwpopewot.supabase.co';
+const TRACKER_KEY = 'sb_publishable_hG5I11kQ9k5IBYrHaCTkRg_WrwCXYAG';
+
+// Pulls the latest week straight from the shared Inventory Tracker database instead
+// of a manually uploaded CSV. Same matching logic as parseCsvToSnapshot: for every
+// (store, model) pair we track, look up that store status for that model
+// description in the latest week, and flag it if De-Ranged.
+async function syncFromTracker() {
+  const headers = { apikey: TRACKER_KEY, Authorization: 'Bearer ' + TRACKER_KEY };
+
+  const wkRes = await fetch(TRACKER_URL + '/rest/v1/bunnings_facts?select=wk_start&country=eq.AU&order=wk_start.desc&limit=1', { headers });
+  if (!wkRes.ok) throw new Error('Could not reach the Inventory Tracker (' + wkRes.status + ')');
+  const wkData = await wkRes.json();
+  if (!wkData.length) throw new Error('No data found in the Inventory Tracker yet.');
+  const latestWk = wkData[0].wk_start;
+
+  const [factsRes, itemsRes] = await Promise.all([
+    fetch(TRACKER_URL + '/rest/v1/bunnings_facts?select=item,store,status,soh&country=eq.AU&wk_start=eq.' + latestWk, { headers }),
+    fetch(TRACKER_URL + '/rest/v1/bunnings_items?select=item,description', { headers })
+  ]);
+  if (!factsRes.ok || !itemsRes.ok) throw new Error('Could not read data from the Inventory Tracker');
+  const facts = await factsRes.json();
+  const items = await itemsRes.json();
+
+  const descOf = {};
+  items.forEach(i => { descOf[i.item] = i.description; });
+
+  const lookup = {};
+  facts.forEach(f => {
+    const desc = descOf[f.item];
+    if (!desc) return;
+    lookup[f.store + '|' + desc] = { status: f.status, soh: f.soh };
+  });
+
+  const deranged = [];
+  MASTER.forEach(s => {
+    s.models.forEach(m => {
+      const desc = MODEL_DESC[m];
+      const rec = lookup[s.store + '|' + desc];
+      if (rec && rec.status === 'De-Ranged') {
+        deranged.push({ store: s.store, state: s.state, name: s.name, model: m, soh: rec.soh });
+      }
+    });
+  });
+
+  const wkStartCompact = latestWk.replace(/-/g, '');
+  return { weekStart: wkStartCompact, label: weekLabelFromWkStart(wkStartCompact), deranged };
+}
+
 async function seedIfEmpty() {
   const rows = SEED_HISTORY.map(s => ({
     week_start: s.weekStart, week_label: s.label, deranged: s.deranged,
@@ -402,12 +451,11 @@ function renderDashboard(snapshots) {
 
     <div class="upload-panel">
       <div class="utext">
-        <div class="utitle">Add this week's Bunnings CSV</div>
-        <div class="usub">Parses in your browser, then saves to Supabase — everyone who opens this page will see the update. Adding the same week twice overwrites that week's data rather than duplicating it.</div>
+        <div class="utitle">Sync latest week from Inventory Tracker</div>
+        <div class="usub">Reads status and SOH straight from the shared Inventory Tracker database — no separate CSV needed. Uses whichever week is most recent there. Re-syncing the same week overwrites it rather than duplicating it.</div>
         <div id="uploadStatus"></div>
       </div>
-      <label class="file-btn">Choose CSV<input type="file" id="csvInput" accept=".csv" style="display:none;"></label>
-      <button class="add-btn" id="addBtn" disabled>Add to Dashboard</button>
+      <button class="add-btn" id="syncBtn">Sync Latest Week</button>
     </div>
 
     <div class="kpi-row">
@@ -484,37 +532,27 @@ function renderDashboard(snapshots) {
     }, 80);
   });
 
-  // wire up upload controls
-  const fileInput = document.getElementById('csvInput');
-  const addBtn = document.getElementById('addBtn');
+  // wire up sync control
+  const syncBtn = document.getElementById('syncBtn');
   const statusEl = document.getElementById('uploadStatus');
-  let pendingFile = null;
 
-  fileInput.addEventListener('change', () => {
-    pendingFile = fileInput.files[0] || null;
-    addBtn.disabled = !pendingFile;
-    statusEl.textContent = pendingFile ? `Selected: ${pendingFile.name}` : '';
-    statusEl.className = 'upload-status';
-  });
-
-  addBtn.addEventListener('click', async () => {
-    if (!pendingFile) return;
-    addBtn.disabled = true;
-    statusEl.textContent = 'Processing…';
+  syncBtn.addEventListener('click', async () => {
+    syncBtn.disabled = true;
+    statusEl.textContent = 'Reading latest week from Inventory Tracker…';
     statusEl.className = 'upload-status';
     try {
-      const text = await pendingFile.text();
-      const newSnap = parseCsvToSnapshot(text);
+      const newSnap = await syncFromTracker();
       statusEl.textContent = `Saving ${newSnap.label} to Supabase…`;
       await saveSnapshot(newSnap);
       const updated = await loadSnapshots();
-      statusEl.textContent = `Saved ${newSnap.label} — visible to everyone now`;
+      statusEl.textContent = `Synced ${newSnap.label} — visible to everyone now`;
       statusEl.className = 'upload-status ok';
       setTimeout(() => renderDashboard(updated), 400);
     } catch (e) {
       statusEl.textContent = 'Error: ' + e.message;
       statusEl.className = 'upload-status err';
-      addBtn.disabled = false;
+    } finally {
+      syncBtn.disabled = false;
     }
   });
 }

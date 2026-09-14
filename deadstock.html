@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bunnings â Deadstock &amp; Transfer</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#12161f; --panel-border:#232838;
+    --text:#e7eaf0; --muted:#8a92a6; --navy:#1f4e78;
+    --green:#2e9e5b; --amber:#e0b94f; --red:#c0392b;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  header{padding:22px 28px 14px;border-bottom:1px solid var(--panel-border);display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;}
+  header h1{margin:0;font-size:20px;font-weight:600;letter-spacing:.2px;}
+  header .sub{color:var(--muted);font-size:12.5px;margin-top:4px;}
+  #latestWeek{font-size:13px;font-weight:600;margin-bottom:3px;text-align:right;}
+  #lastUpdated{color:var(--muted);font-size:12px;text-align:right;}
+  .stale-badge{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;}
+  .stale-badge.fresh{background:rgba(46,158,91,.15);color:var(--green);}
+  .stale-badge.due{background:rgba(224,185,79,.15);color:var(--amber);}
+  .stale-badge.stale{background:rgba(192,57,43,.15);color:#e8776a;}
+
+  .country-tabs{display:flex;gap:4px;padding:14px 28px 0;}
+  .country-tabs button{background:var(--panel);border:1px solid var(--panel-border);color:var(--muted);
+    font-family:inherit;font-size:13px;font-weight:600;padding:8px 20px;min-width:140px;text-align:center;
+    border-radius:9px;cursor:pointer;transition:all .12s ease;}
+  .country-tabs button:hover{color:var(--text);border-color:#3a4256;}
+  .country-tabs button.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+
+  .filters{display:flex;flex-wrap:wrap;gap:10px;padding:16px 28px;border-bottom:1px solid var(--panel-border);align-items:center;}
+  .filter-group{display:flex;gap:6px;flex-wrap:wrap;}
+  .filter-label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-right:4px;align-self:center;}
+  .chip{padding:6px 14px;border-radius:20px;background:var(--panel);border:1px solid var(--panel-border);
+    color:var(--muted);font-size:12.5px;cursor:pointer;user-select:none;transition:all .12s ease;}
+  .chip:hover{border-color:#3a4256;color:var(--text);}
+  .chip.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+  select,input[type=search]{background:var(--panel);color:var(--text);border:1px solid var(--panel-border);
+    border-radius:8px;padding:6px 10px;font-size:12.5px;font-family:inherit;}
+  input[type=search]{min-width:250px;}
+
+  main{padding:22px 28px 40px;}
+  .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:18px;}
+  .kpi{background:var(--panel);border:1px solid var(--panel-border);border-radius:12px;padding:16px 18px;}
+  .kpi .label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px;}
+  .kpi .value{font-size:23px;font-weight:700;}
+  .kpi .value.red{color:var(--red);}
+  .kpi .value.green{color:var(--green);}
+  .kpi .value.amber{color:var(--amber);}
+  .kpi .sub{font-size:11.5px;color:var(--muted);margin-top:4px;}
+
+  .panel{background:var(--panel);border:1px solid var(--panel-border);border-radius:12px;padding:18px 20px;margin-bottom:18px;overflow-x:auto;}
+  .panel h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 14px;
+    display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--panel-border);white-space:nowrap;}
+  th{color:var(--muted);font-weight:600;text-transform:uppercase;font-size:10.5px;letter-spacing:.5px;}
+  td.num,th.num{text-align:right;}
+  tbody tr:hover td{background:#161b26;}
+  .empty{color:var(--muted);font-size:13px;padding:20px 0;text-align:center;}
+  .desc{color:var(--muted);font-size:12px;}
+  .tag{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;}
+  .tag.within{background:rgba(46,158,91,.15);color:var(--green);}
+  .tag.far{background:rgba(138,146,166,.15);color:var(--muted);}
+
+  #loadError{display:none;background:rgba(192,57,43,.12);border:1px solid var(--red);color:#f3a79c;
+    padding:12px 16px;border-radius:8px;margin-bottom:18px;font-size:13px;}
+  .hint{color:var(--muted);font-size:11.5px;margin-top:10px;}
+
+  @media (max-width:600px){
+    header{padding:16px 12px 12px;} header h1{font-size:18px;}
+    #latestWeek,#lastUpdated{text-align:left;}
+    .country-tabs{padding:12px 12px 0;} .country-tabs button{min-width:0;flex:1;}
+    .filters{padding:12px;gap:8px;} main{padding:16px 12px 32px;}
+    .panel{padding:14px 12px;} table{font-size:12px;} th,td{padding:6px 8px;}
+    select,input[type=search]{max-width:150px;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Deadstock &amp; Transfer</h1>
+    <div class="sub">Bunnings weekly sell-out â models with zero sales that are still holding stock, and nearby low-stock stores to move it to &mdash; companion to the Inventory Tracker and Sales per Model page</div>
+  </div>
+  <div>
+    <div id="latestWeek"></div>
+    <div id="lastUpdated">Loading&hellip;</div>
+  </div>
+</header>
+
+<div class="country-tabs" id="countryToggle">
+  <button class="active" data-country="AU">Australia</button>
+  <button data-country="NZ">New Zealand</button>
+</div>
+
+<div class="filters">
+  <span class="filter-label">Products</span>
+  <div class="filter-group" id="scopeFilters">
+    <span class="chip active" data-scope="saleout">Saleout list</span>
+    <span class="chip" data-scope="all">All products</span>
+  </div>
+
+  <span class="filter-label" style="margin-left:14px;">Category</span>
+  <div class="filter-group" id="catFilters">
+    <span class="chip active" data-cat="all">All</span>
+    <span class="chip" data-cat="Philips Locks">Philips Locks</span>
+    <span class="chip" data-cat="Zigbang Locks">Zigbang Locks</span>
+    <span class="chip" data-cat="Philips Safes">Philips Safes</span>
+  </div>
+
+  <span class="filter-label" style="margin-left:14px;">State</span>
+  <div class="filter-group" id="stateFilters"></div>
+
+  <span class="filter-label" style="margin-left:14px;">Week From</span>
+  <select id="weekFrom"></select>
+  <span class="filter-label" style="margin-left:6px;">To</span>
+  <select id="weekTo"></select>
+
+  <span class="filter-label" style="margin-left:14px;">Model</span>
+  <input type="search" id="modelSearch" list="modelList" autocomplete="off"
+         placeholder="All models â click or type to narrow, or pick one for detail">
+  <datalist id="modelList"></datalist>
+
+  <span class="chip" id="resetFilters" style="margin-left:14px;">Reset</span>
+</div>
+
+<main>
+  <div id="loadError"></div>
+
+  <div class="kpi-row">
+    <div class="kpi"><div class="label">Models w/ Deadstock</div><div class="value red" id="kpiModels">&ndash;</div><div class="sub" id="kpiModelsSub">&nbsp;</div></div>
+    <div class="kpi"><div class="label">Deadstock Store/Model Pairs</div><div class="value red" id="kpiDeadPairs">&ndash;</div><div class="sub" id="kpiDeadSub">&nbsp;</div></div>
+    <div class="kpi"><div class="label">Deadstock Value</div><div class="value red" id="kpiDeadValue">&ndash;</div><div class="sub">&nbsp;</div></div>
+    <div class="kpi"><div class="label">Low-Stock Sellers</div><div class="value green" id="kpiGoodPairs">&ndash;</div><div class="sub">&nbsp;</div></div>
+    <div class="kpi"><div class="label">Transfers &le;20km</div><div class="value amber" id="kpiTransfers">&ndash;</div><div class="sub">&nbsp;</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>By Model â Deadstock Summary</h2>
+    <table>
+      <thead><tr>
+        <th>SKU</th><th>Saleout Code</th><th>Category</th><th>Model / Description</th>
+        <th class="num">Deadstock Stores</th><th class="num">Deadstock Value</th>
+        <th class="num">Low-Stock Sellers</th><th class="num">Transfers &le;20km</th>
+      </tr></thead>
+      <tbody id="modelBody"></tbody>
+    </table>
+    <div class="hint">"Deadstock" = zero units sold across the selected week range, ranged for at least 80% of those weeks, and still holding stock as of the latest week in range. "Low-stock seller" = sold at least one unit in range and current stock is 1 unit or less (no reorder-minimum field exists in this dataset, so this is a proxy). Narrow the Model filter to one SKU to see the store-by-store breakdown below.</div>
+  </div>
+
+  <div class="panel">
+    <h2 id="detailHeading">Store Detail</h2>
+    <div id="detailEmpty" class="empty">Narrow the Model filter above to exactly one SKU to see its suggested transfers and store lists.</div>
+    <div id="detailBody" style="display:none;">
+      <h2 style="margin-top:4px;">Suggested Transfers (&le; 20km)</h2>
+      <table>
+        <thead><tr><th>From (deadstock)</th><th>State</th><th class="num">SOH</th><th class="num">Value</th><th>To (needs stock)</th><th class="num">Distance</th><th class="num">Their SOH</th></tr></thead>
+        <tbody id="transferBody"></tbody>
+      </table>
+      <h2 style="margin-top:18px;">Deadstock Stores</h2>
+      <table>
+        <thead><tr><th>State</th><th>Store</th><th class="num">SOH</th><th class="num">Value</th><th>Nearest Low-Stock Seller</th><th class="num">Distance</th></tr></thead>
+        <tbody id="deadDetailBody"></tbody>
+      </table>
+      <h2 style="margin-top:18px;">Low-Stock Sellers</h2>
+      <table>
+        <thead><tr><th>State</th><th>Store</th><th class="num">Sold (window)</th><th class="num">SOH</th></tr></thead>
+        <tbody id="goodDetailBody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+const SUPABASE_URL = "https://vggbzpvgukprwpopewot.supabase.co";
+const SUPABASE_KEY = "sb_publishable_hG5I11kQ9k5IBYrHaCTkRg_WrwCXYAG";
+const PAGE_SIZE = 25000;
+const CONCURRENCY = 3;
+
+const CURRENCY = { AU: "A$", NZ: "NZ$" };
+let country = "AU";
+const curSym = () => CURRENCY[country] || "$";
+const fmtMoney = n => curSym() + Math.round(n).toLocaleString();
+const fmtNum = n => Math.round(n).toLocaleString();
+
+const _wCache = new Map();
+const fmtWeek = d => {
+  let v = _wCache.get(d);
+  if(v) return v;
+  v = new Date(d + "T00:00:00").toLocaleDateString("en-AU", { day:"2-digit", month:"short", year:"2-digit" });
+  _wCache.set(d, v);
+  return v;
+};
+
+// Distribution / returns sites are not stores a rep visits. Kept consistent with
+// the main Inventory Tracker and the Sales per Model page so all three agree.
+function isRealStore(name){
+  if(!name) return true;
+  if(/returns centre/i.test(name)) return false;
+  if(/^crc\b/i.test(name)) return false;
+  if(/fulfilment centre/i.test(name) && !/trade/i.test(name)) return false;
+  return true;
+}
+
+// Sam's Saleout product list, mapped to Bunnings SKUs â identical to the list on
+// the Sales per Model page, kept in sync there. Bunnings descriptions carry the
+// model family but not always the full Saleout suffix (e.g. Saleout "DDL210S-1H"
+// vs Bunnings "DDL210-1H"), so each code maps to a family TOKEN matched against
+// the description with punctuation stripped. DDL902-MFVP-11HWS was on Sam's
+// sheet but has no Bunnings equivalent at all, so it is not listed here either.
+const SALEOUT_NZ = {
+  "Philips Locks": {
+    "7300-5HWS":"7300", "DDL210S-1H":"DDL210-1H", "DDL210S-12H":"DDL210S-12H",
+    "DDL615-5HBS":"DDL615"
+  }
+};
+
+const SALEOUT_AU = {
+  "Philips Locks": {
+    "DDL709-FVP-7HWS":"DDL709", "7300-5HWS":"7300", "DDL210S-1H":"DDL210-1H",
+    "DDL210S-12H":"DDL210S-12H", "DDL505-5HBS":"DDL505", "DDL720-MVP-17HWS":"DDL720-MVP",
+    "DDL250X-14HWC":"DDL250X", "DDL615-5HBS":"DDL615", "DDL610-5HBS":"DDL610",
+    "DDL608-5HWS":"DDL608", "DDA270X-2TXS3":"DDA270X", "DDL230X-1HWP":"DDL230X",
+    "DDL220X-1HW":"DDL220X", "DDL702-FVP-7HWS":"DDL702", "DDL720-5HWS":"DDL720-5"
+  },
+  "Zigbang Locks": { "SHP-R80FCLP/ZE":"R80FCLP", "SHP-DP609AS/ZE":"DP609", "SHP-H60FBXS/ZE":"H60FBXS" },
+  "Philips Safes": {
+    "SBX202-5C0":"SBX202-5C", "SBX202-6C0":"SBX202-6C", "SBX202-7C0":"SBX202-7C",
+    "SBX301-5PC":"SBX301", "SBX102-2C0":"SBX102", "SBX001-1M4":"SBX001",
+    "SBX501-5C0":"SBX501-5C", "SBX501-7C0":"SBX501-7C", "SBX602-8CU":"SBX602-8C",
+    "SBX602-6CU":"SBX602-6C"
+  }
+};
+
+const SALEOUT_BY_COUNTRY = { AU: SALEOUT_AU, NZ: SALEOUT_NZ };
+const NOT_PRODUCT = /INSTALLATION|DISPLAY BOARD|DISPLAY BOX|CALL OUT/i;
+const nrm = s => (s||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+
+function classify(desc, ctry){
+  if(NOT_PRODUCT.test(desc||"")) return null;
+  const map = SALEOUT_BY_COUNTRY[ctry] || {};
+  const d = nrm(desc);
+  for(const [cat, codes] of Object.entries(map))
+    for(const [code, token] of Object.entries(codes))
+      if(d.includes(nrm(token))) return { code, cat };
+  return null;
+}
+
+function haversineKm(lat1, lon1, lat2, lon2){
+  const R = 6371;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+let rows = [];
+let storesAll = [];
+let filters = { scope:"saleout", cat:"all", state:"all", weekFrom:null, weekTo:null, model:"" };
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function sbFetch(path, attempt = 0){
+  const MAX = 4;
+  try{
+    const r = await fetch(SUPABASE_URL + "/rest/v1/" + path, {
+      headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY }
+    });
+    if(!r.ok){
+      const retryable = r.status >= 500 || r.status === 429;
+      if(retryable && attempt < MAX){ await sleep(400 * Math.pow(2, attempt)); return sbFetch(path, attempt+1); }
+      throw new Error("Supabase returned " + r.status + (attempt ? " after " + (attempt+1) + " attempts" : ""));
+    }
+    return await r.json();
+  }catch(err){
+    if(err instanceof TypeError && attempt < MAX){ await sleep(400 * Math.pow(2, attempt)); return sbFetch(path, attempt+1); }
+    throw err;
+  }
+}
+
+async function loadData(){
+  const started = performance.now();
+  try{
+    let cnt, tries = 0;
+    while(true){
+      cnt = await fetch(SUPABASE_URL + "/rest/v1/bunnings_facts?select=wk_start&limit=1", {
+        headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY, Prefer: "count=exact" }
+      });
+      if(cnt.ok) break;
+      if((cnt.status >= 500 || cnt.status === 429) && tries < 4){ await sleep(400 * Math.pow(2, tries++)); continue; }
+      throw new Error("Supabase returned " + cnt.status);
+    }
+    const totalRows = parseInt((cnt.headers.get("content-range")||"").split("/")[1], 10) || 0;
+
+    const offsets = [];
+    for(let o = 0; o < totalRows; o += PAGE_SIZE) offsets.push(o);
+    const pages = [];
+    for(let i = 0; i < offsets.length; i += CONCURRENCY){
+      const slice = offsets.slice(i, i + CONCURRENCY).map(o =>
+        sbFetch("bunnings_facts?select=*&order=wk_start.asc&offset=" + o + "&limit=" + PAGE_SIZE));
+      pages.push(...await Promise.all(slice));
+    }
+    const [stores, items] = await Promise.all([
+      sbFetch("bunnings_stores?select=*"),
+      sbFetch("bunnings_items?select=*")
+    ]);
+
+    storesAll = stores;
+
+    const smap = new Map(stores.map(s => [s.country + "|" + s.store, s]));
+    const imap = new Map(items.map(i => [i.item, i.description]));
+
+    rows = pages.flat().map(f => {
+      const s = smap.get(f.country + "|" + f.store) || {};
+      return {
+        country: f.country, wk_start: f.wk_start, item: f.item,
+        description: imap.get(f.item) || "",
+        store: f.store, store_name: s.store_name || f.store, state: s.state || "",
+        units_sold: Number(f.units_sold) || 0, sales_value: Number(f.sales_value) || 0,
+        soh: Number(f.soh) || 0, soh_value: Number(f.soh_value) || 0,
+        saleCode: null, saleCat: null
+      };
+    }).filter(r => isRealStore(r.store_name));
+
+    const clsCache = new Map();
+    for(const r of rows){
+      const key = r.country + "|" + r.description;
+      let c = clsCache.get(key);
+      if(c === undefined){ c = classify(r.description, r.country); clsCache.set(key, c); }
+      if(c){ r.saleCode = c.code; r.saleCat = c.cat; }
+    }
+
+    if(!rows.length){
+      const el = document.getElementById("loadError");
+      el.style.display = "block";
+      el.textContent = "Connected to Supabase but found no rows. Import a weekly CSV on the main tracker first.";
+    }
+
+    buildFilters();
+    showLatestWeek();
+    const secs = ((performance.now() - started)/1000).toFixed(1);
+    document.getElementById("lastUpdated").textContent =
+      "Loaded " + new Date().toLocaleString("en-AU",{dateStyle:"medium",timeStyle:"short"}) +
+      "  \u00b7  " + rows.length.toLocaleString() + " rows in " + secs + "s";
+    render();
+  }catch(err){
+    const el = document.getElementById("loadError");
+    el.style.display = "block";
+    el.textContent = "Couldn't load data from Supabase: " + err.message;
+    document.getElementById("lastUpdated").textContent = "Load failed";
+  }
+}
+
+let weekCache = {};
+function weeksFor(c){
+  if(!weekCache[c]) weekCache[c] = [...new Set(rows.filter(r => r.country === c).map(r => r.wk_start))].sort();
+  return weekCache[c];
+}
+
+function showLatestWeek(){
+  const el = document.getElementById("latestWeek");
+  const w = weeksFor(country);
+  if(!w.length){ el.textContent = "No data"; return; }
+  const latest = w[w.length-1];
+  const label = new Date(latest + "T00:00:00").toLocaleDateString("en-AU",{day:"2-digit",month:"short",year:"numeric"});
+  const wks = Math.floor((Date.now() - new Date(latest + "T00:00:00").getTime())/86400000/7);
+  let cls = "fresh", note = "Updated";
+  if(wks >= 4){ cls = "stale"; note = wks + " weeks behind"; }
+  else if(wks >= 2){ cls = "due"; note = wks + " weeks behind"; }
+  el.innerHTML = "Latest Week: " + label + ' <span class="stale-badge ' + cls + '">' + note + "</span>";
+}
+
+function rebuildCatChips(){
+  const cats = Object.keys(SALEOUT_BY_COUNTRY[country] || {});
+  document.querySelectorAll("#catFilters .chip").forEach(chip => {
+    const c = chip.dataset.cat;
+    chip.style.display = (c === "all" || cats.includes(c)) ? "" : "none";
+  });
+  if(filters.cat !== "all" && !cats.includes(filters.cat)){
+    filters.cat = "all";
+    document.querySelectorAll("#catFilters .chip").forEach(c => c.classList.remove("active"));
+    document.querySelector('#catFilters .chip[data-cat="all"]').classList.add("active");
+  }
+}
+
+function rebuildStateChips(){
+  const states = [...new Set(rows.filter(r => r.country === country).map(r => r.state))].filter(Boolean).sort();
+  const wrap = document.getElementById("stateFilters");
+  wrap.innerHTML = '<span class="chip active" data-state="all">All</span>' +
+    states.map(s => '<span class="chip" data-state="' + s + '">' + s + '</span>').join("");
+  wrap.querySelectorAll(".chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      wrap.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      filters.state = chip.dataset.state;
+      render();
+    });
+  });
+}
+
+function rebuildPickers(){
+  const scoped = applyFilters();
+  const models = new Map();
+  for(const r of scoped){
+    let m = models.get(r.item);
+    if(!m){ m = { desc: r.description || "", units: 0 }; models.set(r.item, m); }
+    m.units += r.units_sold;
+  }
+  document.getElementById("modelList").innerHTML =
+    [...models.entries()].sort((a,b) => a[0].localeCompare(b[0]))
+      .map(([sku, m]) => '<option value="' + sku + '">' + sku +
+           (m.desc ? "  \u2014  " + m.desc.slice(0,60) : "") + "</option>").join("");
+}
+
+function rebuildWeeks(){
+  const w = weeksFor(country);
+  const opts = w.map(x => '<option value="' + x + '">' + fmtWeek(x) + '</option>').join("");
+  const f = document.getElementById("weekFrom"), t = document.getElementById("weekTo");
+  f.innerHTML = opts; t.innerHTML = opts;
+  filters.weekFrom = w[0]; filters.weekTo = w[w.length-1];
+  f.value = filters.weekFrom; t.value = filters.weekTo;
+}
+
+function buildFilters(){
+  rebuildCatChips();
+  rebuildStateChips();
+  rebuildWeeks();
+  rebuildPickers();
+
+  document.getElementById("weekFrom").addEventListener("change", e => {
+    filters.weekFrom = e.target.value;
+    if(filters.weekFrom > filters.weekTo){ filters.weekTo = filters.weekFrom; document.getElementById("weekTo").value = filters.weekTo; }
+    render();
+  });
+  document.getElementById("weekTo").addEventListener("change", e => {
+    filters.weekTo = e.target.value;
+    if(filters.weekTo < filters.weekFrom){ filters.weekFrom = filters.weekTo; document.getElementById("weekFrom").value = filters.weekFrom; }
+    render();
+  });
+
+  let deb;
+  document.getElementById("modelSearch").addEventListener("input", e => {
+    filters.model = e.target.value.trim().toLowerCase();
+    clearTimeout(deb); deb = setTimeout(render, 220);
+  });
+
+  document.getElementById("countryToggle").querySelectorAll("button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      if(btn.dataset.country === country) return;
+      document.querySelectorAll("#countryToggle button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      country = btn.dataset.country;
+      filters.state = "all"; filters.model = "";
+      document.getElementById("modelSearch").value = "";
+      rebuildCatChips();
+      rebuildStateChips();
+      rebuildWeeks();
+      rebuildPickers();
+      showLatestWeek();
+      render();
+    });
+  });
+
+  document.getElementById("resetFilters").addEventListener("click", () => {
+    filters.state = "all"; filters.model = "";
+    document.getElementById("modelSearch").value = "";
+    rebuildStateChips();
+    rebuildWeeks();
+    render();
+  });
+
+  [["scopeFilters","scope"],["catFilters","cat"]].forEach(([id,key]) => {
+    document.getElementById(id).querySelectorAll(".chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        document.querySelectorAll("#" + id + " .chip").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        filters[key] = chip.dataset[key];
+        rebuildPickers();
+        render();
+      });
+    });
+  });
+}
+
+function applyFilters(){
+  return rows.filter(r =>
+    r.country === country &&
+    (filters.scope === "all" || r.saleCode) &&
+    (filters.cat === "all" || r.saleCat === filters.cat) &&
+    (filters.state === "all" || r.state === filters.state) &&
+    (!filters.weekFrom || (r.wk_start >= filters.weekFrom && r.wk_start <= filters.weekTo)) &&
+    (!filters.model || r.item.toLowerCase().includes(filters.model) || (r.description||"").toLowerCase().includes(filters.model))
+  );
+}
+
+// One pass builds every model's per-store stats, then classifies each store as
+// deadstock or a low-stock seller, then finds the nearest low-stock seller
+// (within 20km, and the overall nearest regardless of distance) for each
+// deadstock store. See the hint text under the summary table for the exact
+// thresholds.
+function aggregate(f, geoMap){
+  const byModel = new Map();
+  const weeksInRange = new Set(f.map(r => r.wk_start));
+  const nWeeks = weeksInRange.size || 1;
+
+  for(const r of f){
+    let m = byModel.get(r.item);
+    if(!m){ m = { desc:r.description, code:r.saleCode, cat:r.saleCat, byStore:new Map() }; byModel.set(r.item, m); }
+    let s = m.byStore.get(r.store);
+    if(!s){ s = { store:r.store, name:r.store_name, state:r.state, weeks:new Set(), sold:0, latestWk:null, soh:0, sohVal:0 }; m.byStore.set(r.store, s); }
+    s.weeks.add(r.wk_start);
+    s.sold += r.units_sold;
+    if(!s.latestWk || r.wk_start > s.latestWk){ s.latestWk = r.wk_start; s.soh = r.soh; s.sohVal = r.soh_value; }
+  }
+
+  for(const m of byModel.values()){
+    m.dead = []; m.good = [];
+    for(const s of m.byStore.values()){
+      const presentRatio = s.weeks.size / nWeeks;
+      if(s.sold === 0 && s.soh > 0 && presentRatio >= 0.8) m.dead.push(s);
+      else if(s.sold > 0 && s.soh <= 1) m.good.push(s);
+    }
+    const withGeo = s => { const g = geoMap.get(s.store); return (g && g.lat != null && g.lng != null) ? g : null; };
+    m.dead.forEach(d => {
+      const g1 = withGeo(d);
+      let nearestAny = null;
+      const within20 = [];
+      if(g1){
+        m.good.forEach(gd => {
+          const g2 = withGeo(gd);
+          if(!g2) return;
+          const dist = haversineKm(g1.lat, g1.lng, g2.lat, g2.lng);
+          if(!nearestAny || dist < nearestAny.dist) nearestAny = { store:gd, dist };
+          if(dist <= 20) within20.push({ store:gd, dist });
+        });
+      }
+      within20.sort((a,b) => a.dist - b.dist);
+      d.within20 = within20;
+      d.nearestAny = nearestAny;
+    });
+  }
+  return byModel;
+}
+
+function buildGeoMap(){
+  const m = new Map();
+  storesAll.forEach(s => { if(s.country === country) m.set(s.store, s); });
+  return m;
+}
+
+function render(){
+  const f = applyFilters();
+  const geoMap = buildGeoMap();
+  const byModel = aggregate(f, geoMap);
+
+  const list = [...byModel.entries()]
+    .map(([item, m]) => ({
+      item, desc:m.desc, code:m.code, cat:m.cat,
+      deadStores:m.dead.length,
+      deadValue:m.dead.reduce((s,d) => s + d.sohVal, 0),
+      goodStores:m.good.length,
+      transfers:m.dead.filter(d => d.within20 && d.within20.length).length
+    }))
+    .filter(x => x.deadStores > 0 || x.goodStores > 0)
+    .sort((a,b) => b.deadValue - a.deadValue);
+
+  const totalDeadModels = list.filter(x => x.deadStores > 0).length;
+  const totalDeadPairs = list.reduce((s,x) => s + x.deadStores, 0);
+  const totalDeadValue = list.reduce((s,x) => s + x.deadValue, 0);
+  const totalGoodPairs = list.reduce((s,x) => s + x.goodStores, 0);
+  const totalTransfers = list.reduce((s,x) => s + x.transfers, 0);
+
+  document.getElementById("kpiModels").textContent = fmtNum(totalDeadModels);
+  document.getElementById("kpiModelsSub").textContent = "of " + byModel.size + " in this selection";
+  document.getElementById("kpiDeadPairs").textContent = fmtNum(totalDeadPairs);
+  document.getElementById("kpiDeadSub").textContent =
+    filters.weekFrom ? fmtWeek(filters.weekFrom) + " to " + fmtWeek(filters.weekTo) : "";
+  document.getElementById("kpiDeadValue").textContent = fmtMoney(totalDeadValue);
+  document.getElementById("kpiGoodPairs").textContent = fmtNum(totalGoodPairs);
+  document.getElementById("kpiTransfers").textContent = fmtNum(totalTransfers);
+
+  const body = document.getElementById("modelBody");
+  body.innerHTML = list.length ? list.map(x => '<tr><td>' + x.item + '</td><td>' + (x.code || "\u2014") +
+    '</td><td class="desc">' + (x.cat || "\u2014") + '</td><td class="desc">' + (x.desc||"").slice(0,52) + '</td>' +
+    '<td class="num">' + fmtNum(x.deadStores) + '</td><td class="num">' + fmtMoney(x.deadValue) + '</td>' +
+    '<td class="num">' + fmtNum(x.goodStores) + '</td><td class="num">' + fmtNum(x.transfers) + '</td></tr>').join("")
+    : '<tr><td colspan="8" class="empty">No deadstock or low-stock activity for this selection</td></tr>';
+
+  renderDetail(list.length === 1 ? byModel.get(list[0].item) : null, list.length === 1 ? list[0] : null);
+}
+
+function renderDetail(m, summary){
+  const heading = document.getElementById("detailHeading");
+  const empty = document.getElementById("detailEmpty");
+  const bodyWrap = document.getElementById("detailBody");
+
+  if(!m){
+    heading.textContent = "Store Detail";
+    empty.style.display = "block";
+    bodyWrap.style.display = "none";
+    return;
+  }
+
+  heading.textContent = "Store Detail â " + summary.item + (summary.code ? " (" + summary.code + ")" : "");
+  empty.style.display = "none";
+  bodyWrap.style.display = "block";
+
+  const transfers = [];
+  m.dead.forEach(d => { if(d.within20.length) transfers.push({ from:d, to:d.within20[0].store, dist:d.within20[0].dist }); });
+
+  const transferBody = document.getElementById("transferBody");
+  transferBody.innerHTML = transfers.length ? transfers
+    .sort((a,b) => a.dist - b.dist)
+    .map(t => '<tr><td>' + t.from.name + ' (#' + t.from.store + ')</td><td>' + t.from.state +
+      '</td><td class="num">' + fmtNum(t.from.soh) + '</td><td class="num">' + fmtMoney(t.from.sohVal) +
+      '</td><td>' + t.to.name + ' (#' + t.to.store + ')</td><td class="num">' + t.dist.toFixed(1) + ' km' +
+      '</td><td class="num">' + fmtNum(t.to.soh) + '</td></tr>').join("")
+    : '<tr><td colspan="7" class="empty">No deadstock store has a low-stock seller within 20km for this model and range</td></tr>';
+
+  const deadBody = document.getElementById("deadDetailBody");
+  deadBody.innerHTML = m.dead.length ? m.dead.slice().sort((a,b) => b.sohVal - a.sohVal)
+    .map(d => '<tr><td>' + d.state + '</td><td>' + d.name + ' (#' + d.store + ')</td><td class="num">' +
+      fmtNum(d.soh) + '</td><td class="num">' + fmtMoney(d.sohVal) + '</td><td>' +
+      (d.nearestAny ? d.nearestAny.store.name + ' (#' + d.nearestAny.store.store + ')' : '\u2014') + '</td><td class="num">' +
+      (d.nearestAny ? d.nearestAny.dist.toFixed(1) + ' km' : '\u2014') + '</td></tr>').join("")
+    : '<tr><td colspan="6" class="empty">No deadstock stores for this model in the current range</td></tr>';
+
+  const goodBody = document.getElementById("goodDetailBody");
+  goodBody.innerHTML = m.good.length ? m.good.slice().sort((a,b) => a.soh - b.soh)
+    .map(g => '<tr><td>' + g.state + '</td><td>' + g.name + ' (#' + g.store + ')</td><td class="num">' +
+      fmtNum(g.sold) + '</td><td class="num">' + fmtNum(g.soh) + '</td></tr>').join("")
+    : '<tr><td colspan="4" class="empty">No low-stock sellers for this model in the current range</td></tr>';
+}
+
+loadData();
+</script>
+
+</body>
+</html>

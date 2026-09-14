@@ -1278,6 +1278,7 @@ function csvToRecords(text){
   if(missing.length) throw new Error("Not a Bunnings weekly export \u2014 missing column(s): " + missing.join(", "));
   const idx = {};
   for(const [src, dest] of Object.entries(CSV_MAP)) idx[dest] = head.indexOf(src);
+  const idxStatus = head.indexOf("Status"); // optional — not all exports include it
 
   const out = [];
   const regions = new Set();
@@ -1303,7 +1304,8 @@ function csvToRecords(text){
       units_sold: num("units_sold"),
       sales_value: num("sales_value"),
       soh: num("soh"),
-      soh_value: num("soh_value")
+      soh_value: num("soh_value"),
+      status: idxStatus !== -1 ? (t[idxStatus] || "").trim() || null : null
     });
   }
   if(!out.length) throw new Error("No usable rows found in that file.");

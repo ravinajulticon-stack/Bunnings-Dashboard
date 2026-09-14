@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bunnings â Deadstock &amp; Transfer</title>
+<title>Bunnings — Deadstock &amp; Transfer</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
@@ -90,7 +90,7 @@
 <header>
   <div>
     <h1>Deadstock &amp; Transfer</h1>
-    <div class="sub">Bunnings weekly sell-out â pick a model to see stores with zero sales still holding stock, and nearby low-stock stores to move it to &mdash; companion to the Inventory Tracker and Sales per Model page</div>
+    <div class="sub">Bunnings weekly sell-out — pick a model to see stores with zero sales still holding stock, and nearby low-stock stores to move it to &mdash; companion to the Inventory Tracker and Sales per Model page</div>
   </div>
   <div>
     <div id="latestWeek"></div>
@@ -395,14 +395,14 @@ function rebuildCatChips(){
 }
 
 // Model dropdown is always scoped to Sam's Saleout list for the active country
-// and category filter â the same list models.html uses â so nothing untracked
+// and category filter — the same list models.html uses — so nothing untracked
 // (installation lines, non-equivalent SKUs) ever shows up here.
 function rebuildModelSelect(){
   const sel = document.getElementById("modelSelect");
   const present = new Map();
   rows.filter(r => r.country === country && r.saleCode &&
     (filters.cat === "all" || r.saleCat === filters.cat)).forEach(r => {
-    if(!present.has(ritem)) present.set(r.item, { desc:r.description, code:r.saleCode, cat:r.saleCat });
+    if(!present.has(r.item)) present.set(r.item, { desc:r.description, code:r.saleCode, cat:r.saleCat });
   });
   const list = [...present.entries()].map(([item,v]) => ({ item, ...v }))
     .sort((a,b) => (a.cat+a.code).localeCompare(b.cat+b.code));
@@ -464,7 +464,7 @@ function buildGeoMap(){
 // deadstock store. See the hint text under each table for the exact thresholds.
 function analyseModel(item, weeks, geoMap){
   const weekSet = new Set(weeks);
-  const scoped = rows.filter(r => r.country === country && r.item === item && weekSet.has(rwk_start));
+  const scoped = rows.filter(r => r.country === country && r.item === item && weekSet.has(r.wk_start));
   const nWeeks = weeks.length || 1;
 
   const byStore = new Map();

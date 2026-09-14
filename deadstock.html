@@ -511,7 +511,7 @@ function renderMap(dead, good){
   const container = document.getElementById("map");
   if(!map){
     map = L.map(container, { scrollWheelZoom:false }).setView([-27.5, 133.5], 4);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
       subdomains: 'abcd', maxZoom: 19
     }).addTo(map);

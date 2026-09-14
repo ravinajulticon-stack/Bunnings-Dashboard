@@ -115,15 +115,10 @@
   <span class="filter-label" style="margin-left:14px;">Model</span>
   <select id="modelSelect"><option value="">Choose a model&hellip;</option></select>
 
-  <span class="filter-label" style="margin-left:14px;">Window</span>
-  <select id="windowWeeks">
-    <option value="4">Last 4 weeks</option>
-    <option value="8">Last 8 weeks</option>
-    <option value="12" selected>Last 12 weeks</option>
-    <option value="16">Last 16 weeks</option>
-    <option value="26">Last 26 weeks</option>
-    <option value="0">All available weeks</option>
-  </select>
+  <span class="filter-label" style="margin-left:14px;">Week From</span>
+  <select id="weekFrom"></select>
+  <span class="filter-label" style="margin-left:6px;">To</span>
+  <select id="weekTo"></select>
 </div>
 
 <main>
@@ -256,7 +251,7 @@ function haversineKm(lat1, lon1, lat2, lon2){
 
 let rows = [];
 let storesAll = [];
-let filters = { cat:"all", model:"", windowWeeks:12 };
+let filters = { cat:"all", model:"", weekFrom:null, weekTo:null };
 let map, mapLayer;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -363,9 +358,17 @@ function weeksFor(c){
 // every render so it always tracks the latest data and the current selector.
 function activeWeeks(){
   const all = weeksFor(country);
-  const n = filters.windowWeeks;
-  if(!n || n <= 0 || n >= all.length) return all;
-  return all.slice(all.length - n);
+  if(!filters.weekFrom || !filters.weekTo) return all;
+  return all.filter(w => w >= filters.weekFrom && w <= filters.weekTo);
+}
+
+function rebuildWeeks(){
+  const w = weeksFor(country);
+  const opts = w.map(x => '<option value="' + x + '">' + fmtWeek(x) + '</option>').join("");
+  const f = document.getElementById("weekFrom"), t = document.getElementById("weekTo");
+  f.innerHTML = opts; t.innerHTML = opts;
+  filters.weekFrom = w[0]; filters.weekTo = w[w.length-1];
+  f.value = filters.weekFrom; t.value = filters.weekTo;
 }
 
 function showLatestWeek(){
@@ -415,6 +418,7 @@ function rebuildModelSelect(){
 
 function buildFilters(){
   rebuildCatChips();
+  rebuildWeeks();
   rebuildModelSelect();
 
   document.getElementById("modelSelect").addEventListener("change", e => {
@@ -422,8 +426,14 @@ function buildFilters(){
     render();
   });
 
-  document.getElementById("windowWeeks").addEventListener("change", e => {
-    filters.windowWeeks = Number(e.target.value);
+  document.getElementById("weekFrom").addEventListener("change", e => {
+    filters.weekFrom = e.target.value;
+    if(filters.weekFrom > filters.weekTo){ filters.weekTo = filters.weekFrom; document.getElementById("weekTo").value = filters.weekTo; }
+    render();
+  });
+  document.getElementById("weekTo").addEventListener("change", e => {
+    filters.weekTo = e.target.value;
+    if(filters.weekTo < filters.weekFrom){ filters.weekFrom = filters.weekTo; document.getElementById("weekFrom").value = filters.weekFrom; }
     render();
   });
 
@@ -435,6 +445,7 @@ function buildFilters(){
       country = btn.dataset.country;
       filters.model = "";
       rebuildCatChips();
+      rebuildWeeks();
       rebuildModelSelect();
       showLatestWeek();
       render();

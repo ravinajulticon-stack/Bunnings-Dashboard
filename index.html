@@ -505,37 +505,6 @@
       <tbody id="noMoveBody"></tbody>
     </table>
   </div>
-<div class="panel">
-<h2>Deadstock &amp; Transfer — by Item</h2>
-<div class="filters" style="padding:0 0 14px;border-bottom:none;">
-<span class="filter-label">Item</span>
-<select id="itemPanelSelect"><option value="">Choose an item…</option></select>
-</div>
-<div class="kpi-row" id="itemPanelKpis" style="display:none;">
-<div class="kpi"><div class="label">Deadstock Stores</div><div class="value" id="ipDeadStores">–</div><div class="sub" id="ipDeadSub">&nbsp;</div></div>
-<div class="kpi"><div class="label">Deadstock Value</div><div class="value" id="ipDeadValue">–</div><div class="sub">&nbsp;</div></div>
-<div class="kpi"><div class="label">Low-Stock Sellers</div><div class="value" id="ipGoodStores">–</div><div class="sub">&nbsp;</div></div>
-<div class="kpi"><div class="label">Transfers &le;20km</div><div class="value" id="ipMatches">–</div><div class="sub">&nbsp;</div></div>
-</div>
-<div id="itemPanelEmpty" class="empty">Pick an item above to see its deadstock and transfer opportunities for the current week range (use the Week From/To filters above to widen or narrow the window).</div>
-<div id="itemPanelBody" style="display:none;">
-<h2 style="margin-top:18px;">Suggested Transfers (≤ 20km)</h2>
-<table>
-<thead><tr><th>From (deadstock)</th><th>State</th><th class="num">SOH</th><th class="num">Value</th><th>To (needs stock)</th><th class="num">Distance</th><th class="num">Their SOH</th></tr></thead>
-<tbody id="ipTransferBody"></tbody>
-</table>
-<h2 style="margin-top:18px;">Deadstock Stores</h2>
-<table>
-<thead><tr><th>State</th><th>Store</th><th class="num">SOH</th><th class="num">Value</th><th>Nearest Low-Stock Seller</th><th class="num">Distance</th></tr></thead>
-<tbody id="ipDeadBody"></tbody>
-</table>
-<h2 style="margin-top:18px;">Low-Stock Sellers</h2>
-<table>
-<thead><tr><th>State</th><th>Store</th><th class="num">Sold (window)</th><th class="num">SOH</th></tr></thead>
-<tbody id="ipGoodBody"></tbody>
-</table>
-</div>
-</div>
 </main>
 
 <script>
@@ -549,8 +518,6 @@ const STATE_COLORS = {
 const stateColor = (s, i) => STATE_COLORS[s] || `hsl(${(i*57)%360} 70% 60%)`;
 
 let rows = [];
-let storesAll = [];
-let itemsAll = [];
 let filters = { state: "all", type: "all", store: "all", weekFrom: null, weekTo: null, quarter: "all", monthFrom: null, monthTo: null };
 
 // Memoised by week: called once per ROW during rehydrate (130k+) but there are
@@ -688,9 +655,6 @@ async function loadData(){
       sbFetch("bunnings_items?select=*")
     ]);
 
-storesAll = stores;
-itemsAll = items;
-
     // Lookup maps so each fact row stays tiny over the wire
     const storeMap = new Map(stores.map(s => [s.country + "|" + s.store, s]));
     const itemMap = new Map(items.map(i => [i.item, i.description]));
@@ -730,7 +694,6 @@ itemsAll = items;
       "Loaded " + new Date().toLocaleString("en-AU", { dateStyle:"medium", timeStyle:"short" }) +
       "  \u00b7  " + rows.length.toLocaleString() + " rows in " + secs + "s";
     showLatestWeek();
-if(!window.__itemPanelReady){ initItemPanel(); window.__itemPanelReady = true; } else { refreshItemOptions(); renderItemPanel(); }
     render();
   }catch(err){
     const el = document.getElementById("loadError");
@@ -1028,8 +991,6 @@ function buildFilters(){
       refreshWeekOptions();
       showLatestWeek();
       render();
-refreshItemOptions();
-renderItemPanel();
     });
   });
 
@@ -1096,7 +1057,6 @@ function render(){
   renderTopStores(f);
   renderTopSkus(f);
   renderNoMovement(f);
-if(typeof renderItemPanel === "function") renderItemPanel();
 }
 
 function renderStateTrend(f){
@@ -1423,141 +1383,6 @@ function initUpload(){
       choose.disabled = false;
     }
   });
-}
-
-
-function haversineKm(lat1, lon1, lat2, lon2){
-  const R = 6371;
-  const toRad = d => d * Math.PI / 180;
-  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat/2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
-}
-
-function buildGeoMap(){
-  const m = new Map();
-  storesAll.forEach(s => { if(s.country === country) m.set(s.store, s); });
-  return m;
-}
-
-function refreshItemOptions(){
-  const sel = document.getElementById("itemPanelSelect");
-  if(!sel) return;
-  const present = new Set(rows.filter(r => r.country === country).map(r => r.item));
-  const list = itemsAll.filter(i => present.has(i.item))
-    .map(i => ({ item:i.item, desc:i.description }))
-    .sort((a,b) => (a.desc||"").localeCompare(b.desc||""));
-  const cur = sel.value;
-  sel.innerHTML = optTag("", "Choose an item\u2026") +
-    list.map(i => optTag(i.item, i.item + " \u2014 " + (i.desc||"").slice(0,50))).join("");
-  if(list.some(i => i.item === cur)) sel.value = cur;
-}
-
-function initItemPanel(){
-  refreshItemOptions();
-  document.getElementById("itemPanelSelect").addEventListener("change", renderItemPanel);
-  renderItemPanel();
-}
-
-// Item-scoped deadstock and nearby-transfer view. Deadstock = zero units sold across the
-// selected week range (Week From/To filters above), present in at least 80 percent of
-// those weeks, and still holding stock as of the latest week in range. Low-stock seller =
-// sold something in the range and current SOH of 1 or less (no reorder-minimum field is
-// available in this dataset, so this is a proxy, not the exact Inv_Min threshold used in
-// one-off analyses).
-function renderItemPanel(){
-  const sel = document.getElementById("itemPanelSelect");
-  if(!sel) return;
-  const item = sel.value;
-  const kpis = document.getElementById("itemPanelKpis");
-  const empty = document.getElementById("itemPanelEmpty");
-  const body = document.getElementById("itemPanelBody");
-  if(!kpis || !empty || !body) return;
-  if(!item){
-    kpis.style.display = "none";
-    empty.style.display = "block";
-    body.style.display = "none";
-    return;
-  }
-
-  const weekFrom = filters.weekFrom, weekTo = filters.weekTo;
-  const scoped = rows.filter(r => r.country === country && r.item === item && isRealStore(r.store_name) &&
-    (!weekFrom || !weekTo || (r.wk_start >= weekFrom && r.wk_start <= weekTo)));
-  const weeksSeen = new Set(scoped.map(r => r.wk_start));
-  const nWeeks = weeksSeen.size || 1;
-
-  const byStore = new Map();
-  scoped.forEach(r => {
-    let e = byStore.get(r.store);
-    if(!e){ e = { store:r.store, name:r.store_name, state:r.state, weeks:new Set(), sold:0, latestWk:null, soh:0, sohVal:0 }; byStore.set(r.store, e); }
-    e.weeks.add(r.wk_start);
-    e.sold += Number(r.units_sold) || 0;
-    if(!e.latestWk || r.wk_start > e.latestWk){ e.latestWk = r.wk_start; e.soh = Number(r.soh)||0; e.sohVal = Number(r.soh_value)||0; }
-  });
-
-  const dead = [], good = [];
-  byStore.forEach(e => {
-    const presentRatio = e.weeks.size / nWeeks;
-    if(e.sold === 0 && e.soh > 0 && presentRatio >= 0.8) dead.push(e);
-    else if(e.sold > 0 && e.soh <= 1) good.push(e);
-  });
-
-  const geoMap = buildGeoMap();
-  const withGeo = s => { const g = geoMap.get(s.store); return (g && g.lat != null && g.lng != null) ? g : null; };
-
-  const transfers = [];
-  dead.forEach(d => {
-    const g1 = withGeo(d);
-    let nearestAny = null;
-    const within20 = [];
-    if(g1){
-      good.forEach(gd => {
-        const g2 = withGeo(gd);
-        if(!g2) return;
-        const dist = haversineKm(g1.lat, g1.lng, g2.lat, g2.lng);
-        if(!nearestAny || dist < nearestAny.dist) nearestAny = { store:gd, dist };
-        if(dist <= 20) within20.push({ store:gd, dist });
-      });
-    }
-    within20.sort((a,b) => a.dist - b.dist);
-    d.within20 = within20;
-    d.nearestAny = nearestAny;
-    if(within20.length) transfers.push({ from:d, to:within20[0].store, dist:within20[0].dist });
-  });
-
-  kpis.style.display = "grid";
-  empty.style.display = "none";
-  body.style.display = "block";
-
-  const deadVal = dead.reduce((s,d) => s + d.sohVal, 0);
-  document.getElementById("ipDeadStores").textContent = fmtNum(dead.length);
-  document.getElementById("ipDeadSub").textContent = nWeeks + " week" + (nWeeks===1?"":"s") + " in range";
-  document.getElementById("ipDeadValue").textContent = fmtMoney(deadVal);
-  document.getElementById("ipGoodStores").textContent = fmtNum(good.length);
-  document.getElementById("ipMatches").textContent = transfers.length + " / " + dead.length;
-
-  const transferBody = document.getElementById("ipTransferBody");
-  transferBody.innerHTML = transfers.length ? transfers
-    .sort((a,b) => a.dist - b.dist)
-    .map(t => "<tr><td>" + t.from.name + " (#" + t.from.store + ")</td><td>" + t.from.state +
-      "</td><td class=\"num\">" + fmtNum(t.from.soh) + "</td><td class=\"num\">" + fmtMoney(t.from.sohVal) +
-      "</td><td>" + t.to.name + " (#" + t.to.store + ")</td><td class=\"num\">" + t.dist.toFixed(1) + " km" +
-      "</td><td class=\"num\">" + fmtNum(t.to.soh) + "</td></tr>").join("")
-    : "<tr><td colspan=\"7\" class=\"empty\">No deadstock store has a low-stock seller within 20km for this item and range</td></tr>";
-
-  const deadBody = document.getElementById("ipDeadBody");
-  deadBody.innerHTML = dead.length ? dead.slice().sort((a,b) => b.sohVal - a.sohVal)
-    .map(d => "<tr><td>" + d.state + "</td><td>" + d.name + " (#" + d.store + ")</td><td class=\"num\">" +
-      fmtNum(d.soh) + "</td><td class=\"num\">" + fmtMoney(d.sohVal) + "</td><td>" +
-      (d.nearestAny ? d.nearestAny.store.name + " (#" + d.nearestAny.store.store + ")" : "\u2014") + "</td><td class=\"num\">" +
-      (d.nearestAny ? d.nearestAny.dist.toFixed(1) + " km" : "\u2014") + "</td></tr>").join("")
-    : "<tr><td colspan=\"6\" class=\"empty\">No deadstock stores for this item in the current range</td></tr>";
-
-  const goodBody = document.getElementById("ipGoodBody");
-  goodBody.innerHTML = good.length ? good.slice().sort((a,b) => a.soh - b.soh)
-    .map(g => "<tr><td>" + g.state + "</td><td>" + g.name + " (#" + g.store + ")</td><td class=\"num\">" +
-      fmtNum(g.sold) + "</td><td class=\"num\">" + fmtNum(g.soh) + "</td></tr>").join("")
-    : "<tr><td colspan=\"4\" class=\"empty\">No low-stock sellers for this item in the current range</td></tr>";
 }
 
 loadData();

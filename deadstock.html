@@ -190,7 +190,9 @@ const _wCache = new Map();
 const fmtWeek = d => {
   let v = _wCache.get(d);
   if(v) return v;
-  v = new Date(d + "T00:00:00").toLocaleDateString("en-AU", { day:"2-digit", month:"short", year:"2-digit" });
+  const dt = new Date(d + "T00:00:00");
+  dt.setDate(dt.getDate() + 6); // display as week-ending, matching the Display Rollout dashboard
+  v = dt.toLocaleDateString("en-AU", { day:"2-digit", month:"short", year:"2-digit" });
   _wCache.set(d, v);
   return v;
 };
@@ -376,8 +378,10 @@ function showLatestWeek(){
   const w = weeksFor(country);
   if(!w.length){ el.textContent = "No data"; return; }
   const latest = w[w.length-1];
-  const label = new Date(latest + "T00:00:00").toLocaleDateString("en-AU",{day:"2-digit",month:"short",year:"numeric"});
-  const wks = Math.floor((Date.now() - new Date(latest + "T00:00:00").getTime())/86400000/7);
+  const latestDt = new Date(latest + "T00:00:00");
+  latestDt.setDate(latestDt.getDate() + 6); // week-ending, matching the Display Rollout dashboard
+  const label = latestDt.toLocaleDateString("en-AU",{day:"2-digit",month:"short",year:"numeric"});
+  const wks = Math.floor((Date.now() - latestDt.getTime())/86400000/7);
   let cls = "fresh", note = "Updated";
   if(wks >= 4){ cls = "stale"; note = wks + " weeks behind"; }
   else if(wks >= 2){ cls = "due"; note = wks + " weeks behind"; }

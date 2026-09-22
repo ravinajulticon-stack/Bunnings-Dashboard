@@ -596,7 +596,7 @@ function buildZoomControls(){
 function renderMap(dead, good){
   const container = document.getElementById("map");
   if(!map){
-    map = L.map(container, { scrollWheelZoom:false }).setView([-27.5, 133.5], 4);
+    map = L.map(container, { scrollWheelZoom:false, zoomAnimation:false, fadeAnimation:false }).setView([-27.5, 133.5], 4);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',
       subdomains: 'abc', maxZoom: 19

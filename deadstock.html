@@ -586,7 +586,7 @@ function buildZoomControls(){
   el.querySelectorAll("button").forEach(btn => {
     btn.addEventListener("click", () => {
       const v = views[btn.dataset.view];
-      if(v && map) map.setView(v.center, v.zoom);
+      if(v && map) map.setView(v.center, v.zoom, { animate:false });
       el.querySelectorAll("button").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
     });

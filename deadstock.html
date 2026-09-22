@@ -55,11 +55,26 @@
   .panel h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 14px;
     display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
 
-  #map{height:480px;border-radius:10px;overflow:hidden;margin-bottom:6px;}
+  #map{height:520px;border-radius:10px;overflow:hidden;margin-bottom:6px;}
   .legend{display:flex;gap:18px;font-size:12.5px;color:var(--muted);padding:10px 0 0;flex-wrap:wrap;}
   .legend span{display:inline-flex;align-items:center;gap:6px;}
   .dot{width:10px;height:10px;border-radius:50%;display:inline-block;}
   .dot.red{background:var(--red);} .dot.green{background:var(--green);} .dot.line{background:var(--amber);}
+  .map-wrap{position:relative;}
+  .map-title-card{position:absolute;top:12px;left:12px;z-index:1000;background:#fff;color:#16213a;border-radius:10px;padding:12px 16px;box-shadow:0 3px 10px rgba(0,0,0,.3);font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;max-width:230px;pointer-events:none;}
+  .map-title-card .mtc-title{font-weight:700;font-size:14px;margin-bottom:2px;}
+  .map-title-card .mtc-sub{font-size:11px;color:#64748b;margin-bottom:8px;}
+  .map-title-card .mtc-stat{display:flex;justify-content:space-between;gap:14px;font-size:12px;padding:2px 0;}
+  .map-title-card .mtc-stat b{color:#16213a;}
+  .map-legend-card{position:absolute;top:12px;right:12px;z-index:1000;background:#fff;color:#16213a;border-radius:10px;padding:10px 14px;box-shadow:0 3px 10px rgba(0,0,0,.3);font-size:11.5px;font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;pointer-events:none;}
+  .map-legend-card .lrow{display:flex;align-items:center;gap:7px;margin-bottom:5px;}
+  .map-legend-card .lrow:last-child{margin-bottom:0;}
+  .map-legend-card .ldot{width:10px;height:10px;border-radius:50%;display:inline-block;flex-shrink:0;}
+  .map-legend-card .lline{width:16px;height:2px;display:inline-block;flex-shrink:0;background:linear-gradient(90deg,#2e9e5b,#e0b94f);}
+  .map-stats-bar{position:absolute;bottom:12px;left:12px;z-index:1000;background:#12161f;color:#e7eaf0;border-radius:8px;padding:9px 16px;box-shadow:0 3px 10px rgba(0,0,0,.3);font-size:11.5px;display:flex;gap:16px;flex-wrap:wrap;font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;pointer-events:none;}
+  .map-stats-bar b{color:#fff;}
+  .leaflet-tooltip.store-label{background:transparent;border:none;box-shadow:none;padding:0;font-weight:700;font-size:10.5px;color:#16213a;text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff,0 0 4px #fff;}
+  .leaflet-tooltip.store-label::before{display:none;}
 
   table{width:100%;border-collapse:collapse;font-size:13px;}
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--panel-border);white-space:nowrap;}
@@ -138,11 +153,15 @@
 
     <div class="panel">
       <h2>Store map</h2>
-      <div id="map"></div>
-      <div class="legend">
-        <span><i class="dot red"></i> Deadstock store</span>
-        <span><i class="dot green"></i> Low-stock seller</span>
-        <span><i class="dot line"></i> Suggested transfer (&le;20km)</span>
+      <div class="map-wrap">
+        <div id="map"></div>
+        <div class="map-title-card" id="mapTitleCard"></div>
+        <div class="map-legend-card">
+          <div class="lrow"><span class="ldot" style="background:var(--red)"></span> Deadstock store</div>
+          <div class="lrow"><span class="ldot" style="background:var(--green)"></span> Low-stock seller</div>
+          <div class="lrow"><span class="lline"></span> Transfer &mdash; green closer, amber further (&le;20km)</div>
+        </div>
+        <div class="map-stats-bar" id="mapStatsBar"></div>
       </div>
     </div>
 
@@ -522,28 +541,45 @@ function analyseModel(item, weeks, geoMap){
   return { dead, good };
 }
 
+function lineColorForDist(dist){
+  // 0km \u2192 green, 20km \u2192 amber, linear blend
+  const t = Math.max(0, Math.min(1, dist / 20));
+  const c1 = [46, 158, 91];
+  const c2 = [224, 185, 79];
+  const r = Math.round(c1[0] + (c2[0]-c1[0])*t);
+  const g = Math.round(c1[1] + (c2[1]-c1[1])*t);
+  const b = Math.round(c1[2] + (c2[2]-c1[2])*t);
+  return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
+
 function renderMap(dead, good){
   const container = document.getElementById("map");
   if(!map){
     map = L.map(container, { scrollWheelZoom:false }).setView([-27.5, 133.5], 4);
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Esri, HERE, Garmin, FAO, NOAA, USGS',
-      maxZoom: 16
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      subdomains: 'abc', maxZoom: 19
     }).addTo(map);
   }
   if(mapLayer) mapLayer.remove();
   mapLayer = L.layerGroup().addTo(map);
 
+  // Permanent name labels get cluttered fast with many markers, so only show
+  // them when the current selection is small enough to stay readable.
+  const showLabels = (dead.length + good.length) <= 25;
+
   dead.forEach(d => {
     if(!d.geo) return;
-    const m = L.circleMarker([d.geo.lat, d.geo.lng], { radius:6, color:'#e5484d', fillColor:'#e5484d', fillOpacity:0.85, weight:1 });
+    const m = L.circleMarker([d.geo.lat, d.geo.lng], { radius:7, color:'#fff', weight:1.5, fillColor:'#c0392b', fillOpacity:0.95 });
     m.bindPopup('<b>' + d.name + '</b> (Store ' + d.store + ')<br>SOH ' + fmtNum(d.soh) + ' \u00b7 ' + fmtMoney(d.sohVal));
+    if(showLabels) m.bindTooltip(d.name, { permanent:true, direction:'top', offset:[0,-9], className:'store-label' });
     m.addTo(mapLayer);
   });
   good.forEach(g => {
     if(!g.geo) return;
-    const m = L.circleMarker([g.geo.lat, g.geo.lng], { radius:5, color:'#2e9e5b', fillColor:'#2e9e5b', fillOpacity:0.85, weight:1 });
+    const m = L.circleMarker([g.geo.lat, g.geo.lng], { radius:6, color:'#fff', weight:1.5, fillColor:'#2e9e5b', fillOpacity:0.95 });
     m.bindPopup('<b>' + g.name + '</b> (Store ' + g.store + ')<br>Sold ' + fmtNum(g.sold) + ' \u00b7 SOH ' + fmtNum(g.soh));
+    if(showLabels) m.bindTooltip(g.name, { permanent:true, direction:'top', offset:[0,-8], className:'store-label' });
     m.addTo(mapLayer);
   });
   dead.forEach(d => {
@@ -551,7 +587,7 @@ function renderMap(dead, good){
     d.within20.forEach(w => {
       if(!w.store.geo) return;
       L.polyline([[d.geo.lat, d.geo.lng],[w.store.geo.lat, w.store.geo.lng]],
-        { color:'#e0b94f', weight:2, opacity:0.8, dashArray:'4,4' }).addTo(mapLayer);
+        { color:lineColorForDist(w.dist), weight:2.5, opacity:0.85 }).addTo(mapLayer);
     });
   });
 
@@ -586,6 +622,26 @@ function render(){
   document.getElementById("kpiTransfers").textContent = fmtNum(transfers.length);
 
   renderMap(dead, good);
+
+  const modelOpt = document.getElementById("modelSelect");
+  const modelLabel = modelOpt && modelOpt.selectedOptions.length ? modelOpt.selectedOptions[0].textContent : filters.model;
+  const titleCard = document.getElementById("mapTitleCard");
+  if(titleCard){
+    titleCard.innerHTML =
+      '<div class="mtc-title">' + modelLabel + '</div>' +
+      '<div class="mtc-sub">' + (weeks.length ? fmtWeek(weeks[0]) + ' \u2013 ' + fmtWeek(weeks[weeks.length-1]) : '') + '</div>' +
+      '<div class="mtc-stat"><span>Deadstock stores</span><b>' + fmtNum(dead.length) + '</b></div>' +
+      '<div class="mtc-stat"><span>Deadstock value</span><b>' + fmtMoney(deadVal) + '</b></div>' +
+      '<div class="mtc-stat"><span>Low-stock sellers</span><b>' + fmtNum(good.length) + '</b></div>' +
+      '<div class="mtc-stat"><span>Transfers \u226420km</span><b>' + fmtNum(transfers.length) + '</b></div>';
+  }
+  const statsBar = document.getElementById("mapStatsBar");
+  if(statsBar){
+    statsBar.innerHTML =
+      '<span>' + country + '</span>' +
+      '<span><b>' + fmtNum(dead.length + good.length) + '</b> stores shown</span>' +
+      '<span><b>' + fmtNum(transfers.length) + '</b> suggested transfers' + '</span>';
+  }
 
   const transferBody = document.getElementById("transferBody");
   transferBody.innerHTML = transfers.length ? transfers

@@ -73,6 +73,10 @@
   .map-legend-card .lline{width:16px;height:2px;display:inline-block;flex-shrink:0;background:linear-gradient(90deg,#2e9e5b,#e0b94f);}
   .map-stats-bar{position:absolute;bottom:12px;left:12px;z-index:1000;background:#12161f;color:#e7eaf0;border-radius:8px;padding:9px 16px;box-shadow:0 3px 10px rgba(0,0,0,.3);font-size:11.5px;display:flex;gap:16px;flex-wrap:wrap;font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;pointer-events:none;}
   .map-stats-bar b{color:#fff;}
+  .map-zoom-controls{position:absolute;bottom:12px;right:12px;z-index:1000;background:#fff;border-radius:8px;padding:6px;box-shadow:0 3px 10px rgba(0,0,0,.3);display:flex;flex-wrap:wrap;gap:4px;max-width:230px;justify-content:flex-end;font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .map-zoom-controls button{border:1px solid #d8dee8;background:#f8fafc;color:#16213a;font-size:11px;font-weight:600;padding:4px 9px;border-radius:5px;cursor:pointer;}
+  .map-zoom-controls button:hover{background:#eaf1fa;border-color:#9fb8d6;}
+  .map-zoom-controls button.active{background:var(--navy);color:#fff;border-color:var(--navy);}
   .leaflet-tooltip.store-label{background:transparent;border:none;box-shadow:none;padding:0;font-weight:700;font-size:10.5px;color:#16213a;text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff,0 0 4px #fff;}
   .leaflet-tooltip.store-label::before{display:none;}
 
@@ -162,6 +166,7 @@
           <div class="lrow"><span class="lline"></span> Transfer &mdash; green closer, amber further (&le;20km)</div>
         </div>
         <div class="map-stats-bar" id="mapStatsBar"></div>
+        <div class="map-zoom-controls" id="mapZoomControls"></div>
       </div>
     </div>
 
@@ -552,6 +557,42 @@ function lineColorForDist(dist){
   return 'rgb(' + r + ',' + g + ',' + b + ')';
 }
 
+const STATE_VIEWS = {
+  AU: {
+    All: { center:[-27.5,133.5], zoom:4 },
+    NSW: { center:[-32.5,147.0], zoom:6 },
+    VIC: { center:[-37.0,144.5], zoom:7 },
+    QLD: { center:[-22.0,145.0], zoom:5 },
+    WA:  { center:[-25.5,122.0], zoom:5 },
+    SA:  { center:[-30.0,135.0], zoom:6 },
+    TAS: { center:[-42.0,146.5], zoom:7 },
+    NT:  { center:[-19.5,133.5], zoom:5 },
+    ACT: { center:[-35.4,149.1], zoom:10 }
+  },
+  NZ: {
+    All: { center:[-41.0,173.0], zoom:5 },
+    'North Island': { center:[-38.5,176.0], zoom:6 },
+    'South Island': { center:[-43.5,171.0], zoom:6 }
+  }
+};
+
+function buildZoomControls(){
+  const el = document.getElementById("mapZoomControls");
+  if(!el) return;
+  const views = STATE_VIEWS[country] || STATE_VIEWS.AU;
+  el.innerHTML = Object.keys(views).map(k =>
+    '<button type="button" data-view="' + k + '"' + (k === "All" ? ' class="active"' : '') + '>' + k + '</button>'
+  ).join("");
+  el.querySelectorAll("button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const v = views[btn.dataset.view];
+      if(v && map) map.setView(v.center, v.zoom);
+      el.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    });
+  });
+}
+
 function renderMap(dead, good){
   const container = document.getElementById("map");
   if(!map){
@@ -561,6 +602,8 @@ function renderMap(dead, good){
       subdomains: 'abc', maxZoom: 19
     }).addTo(map);
   }
+  buildZoomControls();
+
   if(mapLayer) mapLayer.remove();
   mapLayer = L.layerGroup().addTo(map);
 
